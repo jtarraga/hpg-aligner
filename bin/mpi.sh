@@ -25,6 +25,6 @@ export OMP_NUM_THREADS=12
 #time mpirun --np $NSLOTS --bind-to-socket -x OMP_NUM_THREADS --mca orte_base_help_aggregate 0 --mca btl_sm_use_knem 0 /home/jtarraga/appl/bioinfo-c/hpg-aligner/bin/hpg-aligner dna -f /home/jtarraga/datasets/chr21_100nt_r0.01.bwa.read1.fastq -i /home/jtarraga/datasets/sa/index/chrom_20_21_22_k18 --cpu-threads $OMP_NUM_THREADS
 
 # When launching more than 6 threads in total (MPI * OMP)
-time mpirun --np $NSLOTS --mca orte_base_help_aggregate 0 --mca btl_sm_use_knem 0 /home/jtarraga/appl/bioinfo-c/hpg-aligner/bin/hpg-aligner dna -f /home/jtarraga/datasets/chr21_100nt_r0.01.bwa.read1.fastq -i /home/jtarraga/datasets/sa/index/chrom_20_21_22_k18 --cpu-threads $OMP_NUM_THREADS
+time mpirun --np $NSLOTS -x $OMP_NUM_THREADS --mca orte_base_help_aggregate 0 --mca btl_sm_use_knem 0 /home/jtarraga/appl/bioinfo-c/hpg-aligner/bin/hpg-aligner dna -f /home/jtarraga/datasets/chr21_100nt_r0.01.bwa.read1.fastq -i /home/jtarraga/datasets/sa/index/chrom_20_21_22_k18 --cpu-threads $OMP_NUM_THREADS
 
 
