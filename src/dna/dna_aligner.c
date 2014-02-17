@@ -12,7 +12,46 @@ extern int num_total_dup_reads;
 
 int counters[NUM_COUNTERS];
 
+#ifdef _MPI
+
+#include "mpi_commons.h"
+
+void dna_aligner_worker(options_t *options);
+
 void dna_aligner(options_t *options) {
+  MPI_Init(NULL, NULL);
+
+  int id, np, namelen;
+  char name[MPI_MAX_PROCESSOR_NAME];
+
+  MPI_Comm_size(MPI_COMM_WORLD, &np);
+  MPI_Comm_rank(MPI_COMM_WORLD, &id);
+  MPI_Get_processor_name(name, &namelen);
+
+  printf ("Hello, I'm process %i of %i, and I'm running on node %s\n", id, np, name);
+  fflush(stdout);
+
+  if (id == 0) {
+    dna_aligner_worker(options);
+  }
+ 
+  /*
+    //    mpi_master(np);
+  } else {
+    dna_aligner_worker(options);
+  }
+  */
+  MPI_Finalize ();
+}
+
+void dna_aligner_worker(options_t *options) {
+
+#else // no _MPI
+
+void dna_aligner(options_t *options) {
+
+#endif // _MPI
+
   #ifdef _TIMING
   init_func_names();
   for (int i = 0; i < NUM_TIMING; i++) {
@@ -137,35 +176,91 @@ void dna_aligner(options_t *options) {
       }
     }
     
-    //--------------------------------------------------------------------------------------
-    // workflow management
-    //
     sa_wf_batch_t *wf_batch = sa_wf_batch_new(options, (void *)sa_index, &writer_input, NULL);
     sa_wf_input_t *wf_input = sa_wf_input_new(&reader_input, wf_batch);
-    
-    // create and initialize workflow
-    workflow_t *wf = workflow_new();
-    
-    workflow_stage_function_t stage_functions[] = {sa_mapper};
-    char *stage_labels[] = {"SA mapper"};
-    workflow_set_stages(1, &stage_functions, stage_labels, wf);
-    
-    // optional producer and consumer functions
-    workflow_set_producer(sa_fq_reader, "FastQ reader", wf);
-    workflow_set_consumer(sa_sam_writer, "SAM writer", wf);
-    
-    workflow_run_with(num_threads, wf_input, wf);
-    
-    printf("----------------------------------------------\n");
-    workflow_display_timing(wf);
-    printf("----------------------------------------------\n");
-    
 
+    list_t in_list;
+    list_init("in", 1, 10, &in_list);
+
+    list_t out_list;
+    list_init("out", num_threads, 10 * num_threads, &out_list);
+
+    omp_set_nested(1);
+
+    printf("Starting mapping...\n");
+    gettimeofday(&start, NULL);
+
+    #pragma omp parallel sections num_threads(num_threads + 2)
+    {
+      #pragma omp section
+      {
+	// fastq reader
+	//	printf("----> reader started....\n");
+	
+	void *batch;
+	list_item_t *item = NULL;
+	while ((batch = sa_fq_reader(wf_input)) != NULL) {
+	  // insert this batch to the corresponding list
+	  item = list_item_new(0, 0, batch);
+	  list_insert_item(item, &in_list);
+	}
+	//	printf("--------> reader finished\n");
+	list_decr_writers(&in_list);
+      }
+
+      #pragma omp section
+      {
+        #pragma omp parallel num_threads(num_threads)
+	{
+	  // mapper
+	  //	  printf("----> mapper started...\n");
+
+	  void *batch;
+	  list_item_t *item, *new_item;
+	  while ((item = list_remove_item(&in_list)) != NULL) {
+	    
+	    batch = item->data_p;
+	    sa_mapper(batch);
+	    
+	    // insert this batch to the corresponding list
+	    new_item = list_item_new(0, 0, batch);
+	    list_insert_item(new_item, &out_list);
+	    
+	    list_item_free(item);
+	  }
+	  //	  printf("----------> mapper finished\n");
+	  list_decr_writers(&out_list);
+	}
+      }
+      #pragma omp section
+      {
+	// sam writer
+	//	printf("---------> writer started...\n");
+	void *batch;
+	list_item_t *item;
+	while ((item = list_remove_item(&out_list)) != NULL) {
+	  
+	  batch = item->data_p;	
+	  sa_sam_writer(batch);
+	  
+	  list_item_free(item);
+	}
+	//	printf("---------> writer finished\n");
+      }
+    }
+    
+    gettimeofday(&stop, NULL);
+    printf("...end of mapping in %0.2f s. Done!!\n\n", 
+	 (stop.tv_sec - start.tv_sec) + (stop.tv_usec - start.tv_usec) / 1000000.0f);  
+
+    sa_wf_input_free(wf_input);
+    sa_wf_batch_free(wf_batch);
+    
     for (int i = 0; i < NUM_COUNTERS; i++) {
       printf("***** counter[%i] = %i\n", i, counters[i]);
     }
 
-  #ifdef _TIMING
+    #ifdef _TIMING
     char func_name[1024];
     double total_func_times = 0;
     for (int i = 0; i < NUM_TIMING; i++) {
@@ -187,11 +282,6 @@ void dna_aligner(options_t *options) {
     
     //  printf("Total num. mappings: %u\n", total_num_mappings);
     
-    // free memory
-    sa_wf_input_free(wf_input);
-    sa_wf_batch_free(wf_batch);
-    workflow_free(wf);
-
     //closing files
     if (options->gzip) {
       if (options->pair_mode == SINGLE_END_MODE) {

@@ -30,6 +30,13 @@ if int(ARGUMENTS.get('verbose', '0')) == 1:
 if int(ARGUMENTS.get('timing', '0')) == 1:
     env['CFLAGS'] += ' -D_TIMING'
 
+if int(ARGUMENTS.get('mpi', '0')) == 1:
+    env['LIBS'].append('mpi')
+    env['CFLAGS'] += ' -D_MPI'
+    env['LIBPATH'].append('/opt/soft/redhatNodes/libs/mpi/openmpi/openmpi-1.6.3/lib')
+    env['CPPPATH'].append('/opt/soft/redhatNodes/libs/mpi/openmpi/openmpi-1.6.3/include')
+
+
 env['objects'] = []
 
 # Targets

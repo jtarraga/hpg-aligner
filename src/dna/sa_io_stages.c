@@ -146,7 +146,6 @@ int sa_sam_writer(void *data) {
     if (num_mappings > 0) {
       for (size_t j = 0; j < num_mappings; j++) {
 	alig = (alignment_t *) array_list_get(j, mapping_list);
-	//if (j == 0) {
 	  flag = (alig->seq_strand ? 16 : 0);
 	  
 	  fprintf(out_file, "%s\t%i\t%s\t%lu\t%i\t%s\t%s\t%lu\t%i\t%s\t%s\t%s\n", 
@@ -163,7 +162,6 @@ int sa_sam_writer(void *data) {
 		  alig->quality,
 		  optional_flags
 		  );
-	  //}
 	alignment_free(alig);	 
       }
     } else {

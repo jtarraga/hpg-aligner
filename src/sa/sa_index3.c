@@ -883,10 +883,10 @@ sa_index3_t *sa_index3_new(char *sa_index_dirname) {
   sa_genome3_t *genome;
   uint *SA, *PRE, *A, *IA;
 
-  #pragma omp parallel sections 
+  //  #pragma omp parallel sections 
+  //  {
+  //    #pragma omp section
   {
-    #pragma omp section
-    {
       struct timeval stop, start;
       FILE *f_tab;
       char filename_tab[strlen(sa_index_dirname) + 1024];
@@ -964,11 +964,11 @@ sa_index3_t *sa_index3_new(char *sa_index_dirname) {
 	       num_items, filename_tab,
 	       (stop.tv_sec - start.tv_sec) + (stop.tv_usec - start.tv_usec) / 1000000.0f);  
 	fclose(f_tab);
-      }
-    }
+      } 
+  }
 
-    #pragma omp section
-    {
+      //    #pragma omp section
+  {
       struct timeval stop, start;
       FILE *f_tab;
       char filename_tab[strlen(sa_index_dirname) + 1024];
@@ -1064,8 +1064,8 @@ sa_index3_t *sa_index3_new(char *sa_index_dirname) {
 	       (stop.tv_sec - start.tv_sec) + (stop.tv_usec - start.tv_usec) / 1000000.0f);  
 	fclose(f_tab);
       }
-    }
   }
+      //}
 
   free(prefix);
 
