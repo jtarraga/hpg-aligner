@@ -19,7 +19,10 @@ int counters[NUM_COUNTERS];
 void dna_aligner_worker(options_t *options);
 
 void dna_aligner(options_t *options) {
+
   MPI_Init(NULL, NULL);
+  //int provided;
+  //MPI_Init_thread(NULL, NULL, MPI_THREAD_SINGLE, &provided);
 
   int id, np, namelen;
   char name[MPI_MAX_PROCESSOR_NAME];
@@ -190,7 +193,7 @@ void dna_aligner(options_t *options) {
     printf("Starting mapping...\n");
     gettimeofday(&start, NULL);
 
-    #pragma omp parallel sections num_threads(num_threads + 2)
+    #pragma omp parallel sections //num_threads(num_threads + 2)
     {
       #pragma omp section
       {
@@ -210,7 +213,7 @@ void dna_aligner(options_t *options) {
 
       #pragma omp section
       {
-        #pragma omp parallel num_threads(num_threads)
+        #pragma omp parallel //num_threads(num_threads)
 	{
 	  // mapper
 	  //	  printf("----> mapper started...\n");
