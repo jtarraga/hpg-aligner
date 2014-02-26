@@ -186,17 +186,18 @@ void dna_aligner(options_t *options) {
     list_init("in", 1, 10, &in_list);
 
     list_t out_list;
-    list_init("out", num_threads, 10 * num_threads, &out_list);
+    list_init("out", num_threads - 2, 10 * num_threads, &out_list);
 
-    omp_set_nested(1);
+    //    omp_set_nested(1);
 
     printf("Starting mapping...\n");
     gettimeofday(&start, NULL);
 
-    #pragma omp parallel sections //num_threads(num_threads + 2)
+    int tid;
+    #pragma omp parallel num_threads(num_threads) private(tid)
     {
-      #pragma omp section
-      {
+      tid = omp_get_thread_num();
+      if (tid == 0) {
 	// fastq reader
 	//	printf("----> reader started....\n");
 	
@@ -209,34 +210,7 @@ void dna_aligner(options_t *options) {
 	}
 	//	printf("--------> reader finished\n");
 	list_decr_writers(&in_list);
-      }
-
-      #pragma omp section
-      {
-        #pragma omp parallel //num_threads(num_threads)
-	{
-	  // mapper
-	  //	  printf("----> mapper started...\n");
-
-	  void *batch;
-	  list_item_t *item, *new_item;
-	  while ((item = list_remove_item(&in_list)) != NULL) {
-	    
-	    batch = item->data_p;
-	    sa_mapper(batch);
-	    
-	    // insert this batch to the corresponding list
-	    new_item = list_item_new(0, 0, batch);
-	    list_insert_item(new_item, &out_list);
-	    
-	    list_item_free(item);
-	  }
-	  //	  printf("----------> mapper finished\n");
-	  list_decr_writers(&out_list);
-	}
-      }
-      #pragma omp section
-      {
+      } else if (tid == 1) {
 	// sam writer
 	//	printf("---------> writer started...\n");
 	void *batch;
@@ -248,7 +222,25 @@ void dna_aligner(options_t *options) {
 	  
 	  list_item_free(item);
 	}
-	//	printf("---------> writer finished\n");
+      } else {
+	// mapper
+	//	  printf("----> mapper started...\n");
+	
+	void *batch;
+	list_item_t *item, *new_item;
+	while ((item = list_remove_item(&in_list)) != NULL) {
+	  
+	  batch = item->data_p;
+	  sa_mapper(batch);
+	  
+	  // insert this batch to the corresponding list
+	  new_item = list_item_new(0, 0, batch);
+	  list_insert_item(new_item, &out_list);
+	  
+	  list_item_free(item);
+	}
+	//	  printf("----------> mapper finished\n");
+	list_decr_writers(&out_list);
       }
     }
     
