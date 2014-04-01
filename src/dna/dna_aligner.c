@@ -1,4 +1,5 @@
 #include "dna_aligner.h"
+
 //--------------------------------------------------------------------
 
 #ifdef _VERBOSE
@@ -18,12 +19,20 @@ extern size_t num_unmapped_reads_by_cigar_length;
 //int counters[NUM_COUNTERS];
 
 void dna_aligner(options_t *options) {
+
   #ifdef _TIMING
   init_func_names();
   for (int i = 0; i < NUM_TIMING; i++) {
     func_times[i] = 0;
   }
   #endif
+
+
+  #ifdef _MPI
+  mpi_main(options);
+  return;
+  #endif
+
 
   // set input parameters
   char *sa_dirname = options->bwt_dirname;

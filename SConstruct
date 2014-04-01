@@ -33,6 +33,28 @@ if int(ARGUMENTS.get('verbose', '0')) == 1:
 if int(ARGUMENTS.get('timing', '0')) == 1:
     env['CFLAGS'] += ' -D_TIMING'
 
+
+sources = [ Glob('src/*.c'),
+	    Glob('src/tools/bam/aux/*.c'),
+	    Glob('src/tools/bam/recalibrate/*.c'),
+	    Glob('src/tools/bam/aligner/*.c'),
+	    Glob('src/build-index/*.c'),
+	    Glob('src/dna/*.c'),
+	    Glob('src/rna/*.c'),
+	    Glob('src/bs/*.c'),
+	    Glob('src/sa/*.c'),
+	    "%s/libcommon.a" % commons_path,
+	    "%s/libbioinfo.a" % bioinfo_path
+          ]
+
+if int(ARGUMENTS.get('mpi', '0')) == 1:
+    env['LIBS'].append('mpi')
+    env['CFLAGS'] += ' -D_MPI'
+    env['LIBPATH'].append('/opt/soft/redhatNodes/libs/mpi/openmpi/openmpi-1.6.3-default-no-sge/lib')
+    env['CPPPATH'].append('/opt/soft/redhatNodes/libs/mpi/openmpi/openmpi-1.6.3-default-no-sge/include')
+    sources.append(Glob('src/mpi/mpi_main.c'))
+    sources.append(Glob('src/mpi/mpi_master.c'))
+
 env['objects'] = []
 
 # Targets
@@ -41,10 +63,14 @@ SConscript(['%s/SConscript' % bioinfo_path,
             '%s/SConscript' % commons_path
             ], exports = ['env', 'debug', 'compiler'])
 
-envprogram = env.Clone()
-envprogram['CFLAGS'] += ' -DNODEBUG -mssse3 -DD_TIME_DEBUG'
 
-bams = envprogram.Program('#bin/hpg-bam',
+aligner = env.Program('#bin/hpg-aligner', source = sources)
+
+#envprogram = env.Clone()
+#envprogram['CFLAGS'] += ' -DNODEBUG -mssse3 -DD_TIME_DEBUG'
+env['CFLAGS'] += ' -DNODEBUG -mssse3 -DD_TIME_DEBUG'
+
+bams = env.Program('#bin/hpg-bam',
              source = [Glob('src/tools/bam/*.c'), 
 	     	       Glob('src/tools/bam/aux/*.c'),
 	     	       Glob('src/tools/bam/recalibrate/*.c'),
@@ -54,20 +80,6 @@ bams = envprogram.Program('#bin/hpg-bam',
                       ]
            )
 
-aligner = envprogram.Program('#bin/hpg-aligner',
-             source = [Glob('src/*.c'),
-		       Glob('src/tools/bam/aux/*.c'),
-		       Glob('src/tools/bam/recalibrate/*.c'),
-	     	       Glob('src/tools/bam/aligner/*.c'),
-		       Glob('src/build-index/*.c'),
-		       Glob('src/dna/*.c'),
-	               Glob('src/rna/*.c'),
-	               Glob('src/bs/*.c'),
-	               Glob('src/sa/*.c'),
-		       "%s/libcommon.a" % commons_path,
-		       "%s/libbioinfo.a" % bioinfo_path
-                      ]
-           )
 Depends(aligner, bams)
 
 '''
