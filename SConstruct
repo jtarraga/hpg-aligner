@@ -54,6 +54,8 @@ if int(ARGUMENTS.get('mpi', '0')) == 1:
     env['CPPPATH'].append('/opt/soft/redhatNodes/libs/mpi/openmpi/openmpi-1.6.3-default-no-sge/include')
     sources.append(Glob('src/mpi/mpi_main.c'))
     sources.append(Glob('src/mpi/mpi_master.c'))
+    sources.append(Glob('src/mpi/mpi_worker.c'))
+    sources.append(Glob('src/mpi/mpi_commons.c'))
 
 env['objects'] = []
 
