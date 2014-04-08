@@ -6,6 +6,8 @@
 
 #include "bioformats/fastq/fastq_read.h"
 
+#include "dna/sa_dna_commons.h"
+
 //--------------------------------------------------------------------
 
 #define END_OF_FILE_MSG     0
@@ -28,7 +30,8 @@ array_list_t *unpack_fastq(int msg_size, char *msg_data);
 
 //--------------------------------------------------------------------
 
-char *pack_sam(array_list_t *reads, int batch_size, int *msg_size);
+char *pack_sam(sa_mapping_batch_t *mapping_batch, sa_genome3_t *genome, 
+	       int batch_size, int *msg_size);
 array_list_t *unpack_sam(int msg_size, char *msg_data);
 
 //--------------------------------------------------------------------

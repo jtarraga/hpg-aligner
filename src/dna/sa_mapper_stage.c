@@ -2171,7 +2171,7 @@ int sa_single_mapper(void *data) {
   for (int i = 0; i < num_reads; i++) {
     cal_list = cal_lists[i];
     read = array_list_get(i, mapping_batch->fq_reads);
-    
+
     if (array_list_size(cal_list) > 0) {
 
       //      printf("after preparing sw...\n");
@@ -2213,6 +2213,10 @@ int sa_single_mapper(void *data) {
 	mapping_batch->mapping_lists[i] = cal_list;
       }
     }
+
+    //printf("read %s\tend of mapping:\n", read->id);
+    //for (int kk = 0; kk < array_list_size(cal_list); kk++) { seed_cal_print(array_list_get(kk, cal_list)); }
+
   } // end of for reads
   
   // free memory

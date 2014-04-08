@@ -5,6 +5,7 @@
 void master_fastq_reader(options_t *options, list_t *in_list);
 void master_send_recv(options_t *options, list_t *in_list, list_t *out_list);
 void master_sam_writer(options_t *options, list_t *out_list);
+sa_genome3_t *load_genome(char *sa_index_dirname);
 
 //--------------------------------------------------------------------
 // MPI master
@@ -218,12 +219,12 @@ void master_send_recv(options_t *options, list_t *in_list, list_t *out_list) {
 	printf("\t\t\t\tmaster_send_recv: pack FastQ and send %i reads\n", array_list_size(reads));
 	msg_data = pack_fastq(reads, options->batch_size, &msg_size);
 	MPI_Send(msg_data, msg_size, MPI_CHAR, status.MPI_SOURCE, FASTQ_BATCH_MSG, MPI_COMM_WORLD);
-	printf("\t\t\t\tmaster_send_recv: -------> sent %i bytes (%s)\n", msg_size, msg_data);
+	printf("\t\t\t\tmaster_send_recv: -------> sent %i bytes\n", msg_size);
 
 	// free memory
-	// we must free here the msg_data !!!
 	array_list_free(reads, (void *) fastq_read_free);
 	list_item_free(item);
+	free(msg_data);
       }
     } else if (status.MPI_TAG == SAM_BATCH_MSG) {
       // when probe returns, the status object has the size and other
@@ -236,21 +237,18 @@ void master_send_recv(options_t *options, list_t *in_list, list_t *out_list) {
       
       // Now receive the message with the allocated buffer
       MPI_Recv(msg_data, msg_size, MPI_CHAR, status.MPI_SOURCE, status.MPI_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-      printf("\t\t\tmaster_send_recv: dynamically received %d numbers from %i ---> %s\n", msg_size, status.MPI_SOURCE, msg_data);
+      printf("\t\t\tmaster_send_recv: dynamically received %d numbers from %i\n", msg_size, status.MPI_SOURCE);
 	     
-
       //      reads = unpack_sam(msg_size, msg_data);
       
-      item = list_item_new(0, 0, (void *) NULL);
+      item = list_item_new(0, 0, (void *) msg_data);
       list_insert_item(item, out_list);
 
     } else if (status.MPI_TAG == END_OF_WORKER_MSG) {
       np--;
       printf("\t\t\tmaster_send_recv: received END_OF_WORKER_MSG (num. left workers = %i)\n", (np - 1));
-      exit(-1);
 
       if (np == 1) break;
-      break;
       //new_wf_batch = NULL;
     } else {
       printf("Error: master received an unknown message (%i)\n", status.MPI_TAG);
@@ -265,15 +263,115 @@ void master_send_recv(options_t *options, list_t *in_list, list_t *out_list) {
 
 void master_sam_writer(options_t *options, list_t *out_list) {
 
+  // read genome
+  sa_genome3_t *genome = load_genome(options->bwt_dirname);
+
+  // setting output name
+  int bam_format = 0;
+  int len = 100;
+  if (options->prefix_name) {
+    len += strlen(options->prefix_name);
+  }
+  if (options->output_name) {
+    len += strlen(options->output_name);
+  }
+  char out_filename[len];
+  out_filename[0] = 0;
+  strcat(out_filename, (options->output_name ? options->output_name : "."));
+  strcat(out_filename, "/");
+  if (options->prefix_name) {
+    strcat(out_filename, options->prefix_name);
+    strcat(out_filename, "_");
+  }
+
+  strcat(out_filename, "out.sam");
+
+  // open file
+  FILE *out_file = fopen(out_filename, "w");    
+  write_sam_header(genome, out_file);
+
+  // main loop
   void *batch;
   list_item_t *item;
   while ((item = list_remove_item(out_list)) != NULL) {
     
-    // batch = item->data_p;
-    //sa_sam_writer(batch);
+    printf("\t\t\master_sam_writer: writing SAM...\n");
+
+    batch = item->data_p;
+    fprintf(out_file, "%s", (char *) batch);
     
+    // free memory
     list_item_free(item);
+    free(batch);
   }
+
+  // free memory and close file
+  sa_genome3_free(genome);
+  fclose(out_file);
+  
+
+  
+  printf("\t\t\tmaster_sam_writer: Done!!\n");
+}
+
+//--------------------------------------------------------------------
+
+sa_genome3_t *load_genome(char *sa_index_dirname) {
+  FILE *f_tab;
+  char line[1024], filename_tab[strlen(sa_index_dirname) + 1024];
+  char *prefix;
+  uint k_value, pre_length, A_items, IA_items, num_suffixes, genome_len, num_chroms, num_items;
+
+  sprintf(filename_tab, "%s/params.txt", sa_index_dirname, prefix);
+
+  //  printf("reading %s\n", filename_tab);
+
+  f_tab = fopen(filename_tab, "r");
+  // prefix
+  fgets(line, 1024, f_tab);
+  line[strlen(line) - 1] = 0;
+  prefix = strdup(line);
+  // k_value
+  fgets(line, 1024, f_tab);
+  k_value = atoi(line);
+  // pre_length
+  fgets(line, 1024, f_tab);
+  pre_length = atoi(line);
+  // A_items
+  fgets(line, 1024, f_tab);
+  A_items = atoi(line);
+  // IA_items
+  fgets(line, 1024, f_tab);
+  IA_items = atol(line);
+  // num_suffixes
+  fgets(line, 1024, f_tab);
+  num_suffixes = atoi(line);
+  // genome_length
+  fgets(line, 1024, f_tab);
+  genome_len = atoi(line);
+  // num_chroms
+  fgets(line, 1024, f_tab);
+  num_chroms = atoi(line);
+
+  size_t *chrom_lengths = (size_t *) malloc(num_chroms * sizeof(size_t));
+  char **chrom_names = (char **) malloc(num_chroms * sizeof(char *));
+  char chrom_name[1024];
+  size_t chrom_len;
+		  
+  for (int i = 0; i < num_chroms; i++) {
+    fgets(line, 1024, f_tab);
+    sscanf(line, "%s %lu\n", chrom_name, &chrom_len);
+    //printf("chrom_name: %s, chrom_len: %lu\n", chrom_name, chrom_len);
+    chrom_names[i] = strdup(chrom_name);
+    chrom_lengths[i] = chrom_len;
+  }
+
+  fclose(f_tab);
+
+  sa_genome3_t *genome = sa_genome3_new(genome_len, num_chroms, 
+					chrom_lengths, chrom_names, NULL);
+
+  return genome;
 }
 
 //--------------------------------------------------------------------

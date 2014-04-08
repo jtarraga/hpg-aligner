@@ -4,14 +4,15 @@
 
 void worker_receiver(options_t *options, sa_index3_t *sa_index, list_t *in_list);
 void worker_mapper(options_t *options, sa_index3_t *sa_index, list_t *in_list, list_t *out_list);
-void worker_sender(options_t *options, list_t *out_list);
+void worker_sender(options_t *options, sa_index3_t *sa_index, list_t *out_list);
 
 //--------------------------------------------------------------------
 // MPI worker
 //--------------------------------------------------------------------
 
 void mpi_worker(options_t *options) {
-  sa_index3_t *sa_index;
+  sa_index3_t *sa_index = sa_index3_new(options->bwt_dirname);
+  printf("sa_index loaded!!\n");
 
   int bam_format = 0;
   int num_threads = options->num_cpu_threads;
@@ -36,7 +37,7 @@ void mpi_worker(options_t *options) {
     } else if (tid == 1) {
       // worker sender
       printf("\tworker: sender (%i), begin...\n", tid);      
-      worker_sender(options, &out_list);
+      worker_sender(options, sa_index, &out_list);
       printf("\tworker:...end of sender (%i). Done !!\n", tid);      
     } else {
       // worker mappers
@@ -45,6 +46,8 @@ void mpi_worker(options_t *options) {
       printf("\tworker:...end of mapper (%i). Done !!\n", tid);      
     }
   }
+
+  if (sa_index) sa_index3_free(sa_index);
 }
 
 //--------------------------------------------------------------------
@@ -58,7 +61,6 @@ void worker_receiver(options_t *options, sa_index3_t *sa_index, list_t *in_list)
   array_list_t *reads;
   sa_mapping_batch_t *sa_mapping_batch;
   sa_wf_batch_t *wf_batch;
-
 
   MPI_Status status;
 
@@ -83,16 +85,16 @@ void worker_receiver(options_t *options, sa_index3_t *sa_index, list_t *in_list)
       
       // Now receive the message with the allocated buffer
       MPI_Recv(msg_data, msg_size, MPI_CHAR, status.MPI_SOURCE, status.MPI_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-      printf("1 dynamically received %d numbers from master ---> %s\n", msg_size, msg_data);
+      printf("1 dynamically received %d numbers from master\n", msg_size);
 
-      //      reads = unpack_fastq(msg_size, msg_data);
+      reads = unpack_fastq(msg_size, msg_data);
+      free(msg_data);
       
-      //      sa_mapping_batch = sa_mapping_batch_new(reads);
-      //      sa_mapping_batch->bam_format = 0;
+      sa_mapping_batch = sa_mapping_batch_new(reads);
+      sa_mapping_batch->bam_format = 0;
+      wf_batch = sa_wf_batch_new(options, sa_index, NULL, sa_mapping_batch);
       
-      //      wf_batch = sa_wf_batch_new(options, sa_index, NULL, sa_mapping_batch);
-
-      item = list_item_new(0, 0, (void *) NULL);
+      item = list_item_new(0, 0, (void *) wf_batch);
       list_insert_item(item, in_list);
 
       printf("************************************** sending GET_FASTQ_BATCH_MSG\n");
@@ -122,13 +124,17 @@ void worker_mapper(options_t *options, sa_index3_t *sa_index,
   list_item_t *item, *new_item;
   while ((item = list_remove_item(in_list)) != NULL) {
     printf("\t\t\tworker_mapper: processing batch\n");
-    /*    
+        
     batch = item->data_p;
-    sa_mapper(batch);
+
+    if (options->pair_mode == SINGLE_END_MODE) {
+      sa_single_mapper(batch);
+    } else {
+      sa_pair_mapper(batch);
+    }
     
     // insert this batch to the corresponding list
-    */
-    new_item = list_item_new(0, 0, NULL);
+    new_item = list_item_new(0, 0, batch);
     list_insert_item(new_item, out_list);
 
     // free memory
@@ -142,7 +148,9 @@ void worker_mapper(options_t *options, sa_index3_t *sa_index,
 
 //--------------------------------------------------------------------
 
-void worker_sender(options_t *options, list_t *out_list) {
+void worker_sender(options_t *options, sa_index3_t *sa_index, list_t *out_list) {
+  void *batch;
+
   int skip;
   list_item_t *item;
 
@@ -153,14 +161,17 @@ void worker_sender(options_t *options, list_t *out_list) {
 
     printf("\t\t\tworker_sender: sending SAM...\n");
 
+    batch = item->data_p;
+
     //reads = (array_list_t *) item->data_p;
     printf("\t\t\t\tworker_sender: pack SAM and send\n");
-    msg_data = pack_sam(NULL, options->batch_size, &msg_size);
+    msg_data = pack_sam(((sa_wf_batch_t *)batch)->mapping_batch, sa_index->genome, options->batch_size, &msg_size);
     MPI_Send(msg_data, msg_size, MPI_CHAR, 0, SAM_BATCH_MSG, MPI_COMM_WORLD);
-    printf("\t\t\t\tworker_sender: -------> sent %i bytes (%s)\n", msg_size, msg_data);
+    printf("\t\t\t\tworker_sender: -------> sent %i bytes\n", msg_size);
 
     // free memory
     list_item_free(item);
+    free(msg_data);
   }
 
   printf("\t\t\tworker_sender: sending END_OF_WORKER...\n");

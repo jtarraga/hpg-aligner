@@ -27,12 +27,10 @@ void dna_aligner(options_t *options) {
   }
   #endif
 
-
   #ifdef _MPI
   mpi_main(options);
   return;
   #endif
-
 
   // set input parameters
   char *sa_dirname = options->bwt_dirname;
