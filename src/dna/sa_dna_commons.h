@@ -13,8 +13,8 @@
 
 //--------------------------------------------------------------------
 
-//#define NUM_COUNTERS 10
-//extern int counters[NUM_COUNTERS];
+#define NUM_COUNTERS 10
+extern int counters[NUM_COUNTERS];
 
 //--------------------------------------------------------------------
 
@@ -65,7 +65,7 @@ char func_names[NUM_TIMING][1024];
 
 typedef struct sa_mapping_batch {
 
-  //  int counters[NUM_COUNTERS];
+  int counters[NUM_COUNTERS];
 
   int bam_format;
   size_t num_reads;
@@ -88,9 +88,9 @@ static inline sa_mapping_batch_t *sa_mapping_batch_new(array_list_t *fq_reads) {
 
   sa_mapping_batch_t *p = (sa_mapping_batch_t *) malloc(sizeof(sa_mapping_batch_t));
 
-  //  for (int i = 0; i < NUM_COUNTERS; i++) {
-  //    p->counters[i] = 0;
-  //  }
+  for (int i = 0; i < NUM_COUNTERS; i++) {
+    p->counters[i] = 0;
+  }
 
   p->bam_format = 0;
   p->num_reads = num_reads;
@@ -128,21 +128,26 @@ typedef struct sa_wf_batch {
   options_t *options;
   sa_index3_t *sa_index;
   batch_writer_input_t *writer_input;
-  sa_mapping_batch_t *mapping_batch;  
+  void *mapping_batch;  
+  void *data;
 } sa_wf_batch_t;
 
 //--------------------------------------------------------------------
 
 static inline sa_wf_batch_t *sa_wf_batch_new(options_t *options,
-				      sa_index3_t *sa_index,
-				      batch_writer_input_t *writer_input,
-				      sa_mapping_batch_t *mapping_batch) {
-  
+					     sa_index3_t *sa_index,
+					     batch_writer_input_t *writer_input,
+					     void *mapping_batch,
+					     void *data) {  
   sa_wf_batch_t *p = (sa_wf_batch_t *) malloc(sizeof(sa_wf_batch_t));
+
   p->options = options;
   p->sa_index = sa_index;
   p->writer_input = writer_input;
+
   p->mapping_batch = mapping_batch;
+  p->data          = data;
+
   return p;
 }
 
@@ -945,10 +950,10 @@ static inline void seed_cal_set_cigar_by_seed(seed_t *seed, seed_cal_t *cal) {
 void print_seed(char *msg, seed_t *s);
 
 static inline void seed_cal_print(seed_cal_t *cal) {
-  printf(" CAL (%c)[%lu:%lu-%lu] (%s, x:%i, og:%i, eg:%i): (read id %s)\n", 
+  printf(" CAL (%c)[%lu:%lu-%lu] (%s, x:%i, og:%i, eg:%i) score = %0.2f: (read id %s)\n", 
 	 (cal->strand == 0 ? '+' : '-'), 
 	 cal->chromosome_id, cal->start, cal->end, cigar_to_string(&cal->cigar), cal->num_mismatches,
-	 cal->num_open_gaps, cal->num_extend_gaps,
+	 cal->num_open_gaps, cal->num_extend_gaps, cal->score,
 	 cal->read->id);
   printf("\tSEEDS LIST:\n");
   if (cal->seed_list == NULL || cal->seed_list->size == 0) {

@@ -83,7 +83,8 @@ void *sa_fq_reader(void *input) {
     new_wf_batch = sa_wf_batch_new(curr_wf_batch->options,
 				   curr_wf_batch->sa_index,
 				   curr_wf_batch->writer_input, 
-				   sa_mapping_batch);
+				   sa_mapping_batch,
+				   NULL);
   }
 
   return new_wf_batch;
@@ -125,11 +126,11 @@ int sa_sam_writer(void *data) {
     printf("bam_writer1: error, NULL mapping batch\n");
     return 0;
   }
-
-  //  for (int i = 0; i < NUM_COUNTERS; i++) {
-  //    counters[i] += mapping_batch->counters[i];
-  //  }
-
+  /*
+  for (int i = 0; i < NUM_COUNTERS; i++) {
+    counters[i] += mapping_batch->counters[i];
+  }
+  */
   #ifdef _TIMING
   for (int i = 0; i < NUM_TIMING; i++) {
     func_times[i] += mapping_batch->func_times[i];
@@ -153,9 +154,11 @@ int sa_sam_writer(void *data) {
 
   if (mapping_batch->options->pair_mode != SINGLE_END_MODE) {
     // PAIR MODE
+    char *seq;
     alignment_t *alig;
     for (size_t i = 0; i < num_reads; i++) {
       read = (fastq_read_t *) array_list_get(i, read_list);
+      seq = read->sequence;
       mapping_list = mapping_batch->mapping_lists[i];
       num_mappings = array_list_size(mapping_list);
       #ifdef _VERBOSE
@@ -175,25 +178,27 @@ int sa_sam_writer(void *data) {
 	  if (alig->is_paired_end_mapped)                       flag += BAM_FPROPER_PAIR;
 	  if (!alig->is_seq_mapped)                             flag += BAM_FUNMAP;   
 	  if ((!alig->is_mate_mapped) && (alig->is_paired_end)) flag += BAM_FMUNMAP;
-	  if (alig->seq_strand)                                 flag += BAM_FREVERSE;
 	  if (alig->mate_strand)                                flag += BAM_FMREVERSE;
 	  if (alig->pair_num == 1)	                        flag += BAM_FREAD1;
 	  if (alig->pair_num == 2)                              flag += BAM_FREAD2;
 	  if (alig->secondary_alignment)                        flag += BAM_FSECONDARY;
 	  if (alig->fails_quality_check)                        flag += BAM_FQCFAIL;
 	  if (alig->pc_optical_duplicate)                       flag += BAM_FDUP;
+	  if (alig->seq_strand) {                               flag += BAM_FREVERSE;
+	    seq = read->revcomp;
+	  }
 
-	  fprintf(out_file, "%s\t%i\t%s\t%lu\t%i\t%s\t%s\t%lu\t%i\t%s\t%s\t%s\n", 
+	  fprintf(out_file, "%s\t%i\t%s\t%i\t%i\t%s\t%s\t%i\t%i\t%s\t%s\t%s\n", 
 		  read->id,
 		  flag,
 		  genome->chrom_names[alig->chromosome],
 		  alig->position + 1,
-		  alig->map_quality,
+		  (alig->map_quality > 3 ? 0 : alig->map_quality),
 		  alig->cigar,
 		  genome->chrom_names[alig->mate_chromosome],
-		  alig->mate_position,
+		  alig->mate_position + 1,
 		  alig->template_length,
-		  read->sequence,
+		  seq,
 		  read->quality,
 		  (alig->optional_fields ? alig->optional_fields : "")
 		  );
@@ -213,6 +218,8 @@ int sa_sam_writer(void *data) {
     }
   } else {
     // SINGLE MODE
+    int mapq;
+    char *seq;
     seed_cal_t *cal;
     for (size_t i = 0; i < num_reads; i++) {
       read = (fastq_read_t *) array_list_get(i, read_list);
@@ -227,23 +234,45 @@ int sa_sam_writer(void *data) {
       
       if (num_mappings > 0) {
 	num_mapped_reads++;
+
+	if (num_mappings == 1) {
+	  mapq = 3;
+	} else if (num_mappings == 2) {
+	  mapq = 2;
+	} else if (num_mappings > 2 && num_mappings < 9) {
+	  mapq = 1;
+	} else {
+	  mapq = 0;
+	}
+
 	for (size_t j = 0; j < num_mappings; j++) {
 	  cal = (seed_cal_t *) array_list_get(j, mapping_list);
 	  
-	  flag = (cal->strand ? 16 : 0);
+	  if (cal->strand) {
+	    flag = 16;
+	    seq = read->revcomp;
+	  } else {
+	    flag = 0;
+	    seq = read->sequence;
+	  }
+
+	  if (i == 0) {
+	    flag += BAM_FSECONDARY;
+	  }
+
 	  cigar_string = cigar_to_string(&cal->cigar);
 	  cigar_M_string = cigar_to_M_string(&num_mismatches, &num_cigar_ops, &cal->cigar);
-	  fprintf(out_file, "%s\t%i\t%s\t%lu\t%i\t%s\t%s\t%lu\t%lu\t%s\t%s\tNH:i:%i\tNM:i:%i\tXC:Z:%s\n", 
+	  fprintf(out_file, "%s\t%i\t%s\t%i\t%i\t%s\t%s\t%lu\t%i\t%s\t%s\tNH:i:%i\tNM:i:%i\tXC:Z:%s\n", 
 		  read->id,
 		  flag,
 		  genome->chrom_names[cal->chromosome_id],
 		  cal->start + 1,
-		  cal->AS,
+		  mapq,
 		  cigar_M_string,
 		  rnext,
 		  pnext,
 		  tlen,
-		  read->sequence,
+		  seq,
 		  read->quality,
 		  num_mappings,
 		  num_mismatches,
