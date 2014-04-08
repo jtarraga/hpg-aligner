@@ -92,7 +92,7 @@ void worker_receiver(options_t *options, sa_index3_t *sa_index, list_t *in_list)
       
       sa_mapping_batch = sa_mapping_batch_new(reads);
       sa_mapping_batch->bam_format = 0;
-      wf_batch = sa_wf_batch_new(options, sa_index, NULL, sa_mapping_batch);
+      wf_batch = sa_wf_batch_new(options, sa_index, NULL, sa_mapping_batch, NULL);
       
       item = list_item_new(0, 0, (void *) wf_batch);
       list_insert_item(item, in_list);
