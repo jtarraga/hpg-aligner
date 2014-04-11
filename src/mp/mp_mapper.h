@@ -1,8 +1,9 @@
-#ifndef DNA_ALIGNER_H
-#define DNA_ALIGNER_H
+#ifndef _MP_MAPPER_H
+#define _MP_MAPPER_H
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <errno.h>
 
 #include "commons/workflow_scheduler.h"
 #include "bioformats/bam/bam_file.h"
@@ -21,14 +22,10 @@
 #include "dna/sa_io_stages.h"
 #include "dna/sa_mapper_stage.h"
 
-#ifdef _MP
-#include "mp/mp_main.h"
-#endif
-
 //--------------------------------------------------------------------
 
-void dna_aligner(options_t *options);
+void mp_mapper(int id, int np, options_t *options);
 
 //--------------------------------------------------------------------
 //--------------------------------------------------------------------
-#endif // DNA_ALIGNER_H
+#endif // _MP_MAPPER_H

@@ -54,8 +54,12 @@
 //#define RNA_MODE 1
 //#define BS_MODE  2
 
-
+#ifdef _MP
+#define NUM_OPTIONS			31
+#else
 #define NUM_OPTIONS			29
+#endif
+
 #define NUM_RNA_OPTIONS			 6
 #define NUM_DNA_OPTIONS			 1
 
@@ -64,6 +68,10 @@
 
 
 typedef struct options {
+#ifdef _MP
+  int id;
+  int np;
+#endif
   int mode;
   int gzip;
   int bam_format;

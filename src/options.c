@@ -394,6 +394,11 @@ void** argtable_options_new(int mode) {
     argtable[count++] = arg_lit0(NULL, "fast-mode", "Fast mode for SA index");
   }
 
+#ifdef _MP
+  argtable[count++] = arg_int0(NULL, "id", NULL, "Process id");
+  argtable[count++] = arg_int0(NULL, "np", NULL, "Number of processes");
+#endif
+
   argtable[num_options] = arg_end(count);
      
   return argtable;
@@ -484,6 +489,11 @@ options_t *read_CLI_options(void **argtable, options_t *options) {
     if (((struct arg_int*)argtable[++count])->count) { options->min_intron_length = *(((struct arg_int*)argtable[count])->ival); }
     if (((struct arg_file*)argtable[++count])->count) { options->fast_mode = (((struct arg_int *)argtable[count])->count); }
   }
+
+#ifdef _MP
+  if (((struct arg_int*)argtable[++count])->count) { options->id = *(((struct arg_int*)argtable[count])->ival); }
+  if (((struct arg_int*)argtable[++count])->count) { options->np = *(((struct arg_int*)argtable[count])->ival); }
+#endif
 
   return options;
 }
