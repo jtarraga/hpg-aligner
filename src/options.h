@@ -2,7 +2,7 @@
 #define OPTIONS_H
 
 /*
- * hpg-fastq.h
+ * options.h
  *
  *  Created on: Aug 29, 2012
  *      Author: imedina
@@ -56,7 +56,7 @@
 #define DEFAULT_FILTER_SEED_MAPPINGS_BS 500
 //========================================================================
 
-#define NUM_OPTIONS			30
+#define NUM_OPTIONS			32
 #define NUM_RNA_OPTIONS			 5
 #define NUM_DNA_OPTIONS			 1
 
@@ -111,6 +111,8 @@ typedef struct options {
   int set_bam_format;
   int adapter_length;
   int set_cal;
+  int exclude_alt;
+  int exclude_scaffold;
   double min_score;
   double match;
   double mismatch;

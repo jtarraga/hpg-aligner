@@ -1,6 +1,5 @@
 #include "sa_dna_commons.h"
 
-
 //--------------------------------------------------------------------
 // commons
 //--------------------------------------------------------------------
@@ -568,16 +567,16 @@ void create_alignments(array_list_t *cal_list, fastq_read_t *read,
 
 void display_suffix_mappings(int strand, size_t r_start, size_t suffix_len, 
 			     size_t low, size_t high, sa_index3_t *sa_index) {
-  unsigned int chrom;
+  unsigned short int chrom;
   size_t r_end, g_start, g_end;
   for (size_t suff = low; suff <= high; suff++) {
     r_end = r_start + suffix_len - 1;
     chrom = sa_index->CHROM[suff];
-    g_start = sa_index->SA[suff] - sa_index->genome->chrom_offsets[chrom];
+    g_start = sa_index->SA[suff] - sa_index->genome->seq_offsets[chrom];
     g_end = g_start + suffix_len - 1;
     printf("\t\t[%lu|%lu-%lu|%lu] %c chrom %s\n",
 	   g_start, r_start, r_end, g_end, (strand == 0 ? '+' : '-'), 
-	   sa_index->genome->chrom_names[chrom]);
+	   sa_index->genome->seq_names[chrom]);
   }
 }
 
@@ -594,13 +593,13 @@ void print_seed(char *msg, seed_t *s) {
 
 void display_sequence(uint j, sa_index3_t *index, uint len) {
   char *p = &index->genome->S[index->SA[j]];
-  unsigned int chrom = (unsigned int) index->CHROM[j];
+  unsigned short int chrom = (unsigned short int) index->CHROM[j];
   for (int i = 0; i < len; i++) {
     printf("%c", *p);
     p++;
   }
   printf("\t%u\t%s:%lu\n", index->SA[j], 
-	 index->genome->chrom_names[chrom], index->SA[j] - index->genome->chrom_offsets[chrom]);
+	 index->genome->seq_names[chrom], index->SA[j] - index->genome->seq_offsets[chrom]);
 }
 
 //--------------------------------------------------------------------
@@ -614,7 +613,7 @@ char *get_subsequence(char *seq, size_t start, size_t len) {
 //--------------------------------------------------------------------
 
 void display_cmp_sequences(fastq_read_t *read, sa_index3_t *sa_index) {
-  unsigned int chrom;
+  unsigned short int chrom;
   size_t pos, strand;
   char *ref, *seq, *chrom_str, *aux, *p1, *p2;
   
@@ -622,8 +621,8 @@ void display_cmp_sequences(fastq_read_t *read, sa_index3_t *sa_index) {
   p1 = strstr(aux, "_");
   *p1 = 0;
   chrom_str = strdup(aux);
-  for (chrom = 0; chrom < sa_index->genome->num_chroms; chrom++) {
-    if (strcmp(chrom_str, sa_index->genome->chrom_names[chrom]) == 0) {
+  for (chrom = 0; chrom < sa_index->genome->num_seqs; chrom++) {
+    if (strcmp(chrom_str, sa_index->genome->seq_names[chrom]) == 0) {
       break;
     }
   }
@@ -658,7 +657,7 @@ void display_cmp_sequences(fastq_read_t *read, sa_index3_t *sa_index) {
    seq = read->sequence;
   }
   printf("%s\n", seq);
-  ref = &sa_index->genome->S[pos + sa_index->genome->chrom_offsets[chrom] - 1];
+  ref = &sa_index->genome->S[pos + sa_index->genome->seq_offsets[chrom] - 1];
   for (int i = 0; i < read->length; i++) {
     if (seq[i] == ref[i]) {
       printf("|");

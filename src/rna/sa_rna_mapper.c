@@ -442,7 +442,7 @@ int sa_sam_writer_rna(void *data) {
 	  fprintf(out_file, "%s\t%i\t%s\t%i\t%i\t%s\t%s\t%i\t%i\t%s\t%s\t%s\n", 
 		  alig->query_name,
 		  flag,
-		  genome->chrom_names[alig->chromosome - 1],
+		  genome->seq_names[alig->chromosome - 1],
 		  alig->position + 1,
 		  255,
 		  alig->cigar,
@@ -783,7 +783,7 @@ void cal_mng_print(cal_mng_t *p) {
 
   if (p->cals_lists) {
     linked_list_t *cal_list;
-    for (unsigned int i = 0; i < p->num_chroms; i++) {
+    for (unsigned int i = 0; i < p->num_seqs; i++) {
       cal_list = p->cals_lists[i];
       num_items = linked_list_size(cal_list);
       if (num_items) {
@@ -1661,11 +1661,11 @@ void convert_batch_to_str(sa_wf_batch_t *wf_batch) {
 	    sprintf(alig_str, "%s\t%i\t%s\t%i\t%i\t%s\t%s\t%i\t%i\t%s\t%s\t%s\n", 
 		    read->id,
 		    flag,
-		    genome->chrom_names[alig->chromosome - 1],
+		    genome->seq_names[alig->chromosome - 1],
 		    alig->position + 1,
 		    mqual,
 		    alig->cigar,
-		    alig->mate_chromosome <= 0 ? "0" : genome->chrom_names[alig->mate_chromosome - 1],
+		    alig->mate_chromosome <= 0 ? "0" : genome->seq_names[alig->mate_chromosome - 1],
 		    alig->mate_position + 1,
 		    alig->template_length,
 		    alig->sequence,
@@ -1732,7 +1732,7 @@ void convert_batch_to_str(sa_wf_batch_t *wf_batch) {
 	    sprintf(alig_str, "%s\t%i\t%s\t%i\t%i\t%s\t%s\t%i\t%i\t%s\t%s\t%s\n%c", 
 		    alig->query_name,
 		    flag,
-		    genome->chrom_names[alig->chromosome - 1],
+		    genome->seq_names[alig->chromosome - 1],
 		    alig->position + 1,
 		    mqual,
 		    alig->cigar,
@@ -2002,7 +2002,7 @@ int sa_mapped_exact_reads(fastq_read_t *read,
     size_t suff = low_p;
     for (size_t a = 0; a < n_alig; a++, suff++) {
       chrom = sa_index->CHROM[suff];	
-      g_start = sa_index->SA[suff] - sa_index->genome->chrom_offsets[chrom];
+      g_start = sa_index->SA[suff] - sa_index->genome->seq_offsets[chrom];
       
       //char cigar_str[2048];
       //sprintf(cigar_str, "%i%c", read->length, 'M');     
@@ -2043,7 +2043,7 @@ int sa_mapped_exact_reads(fastq_read_t *read,
     size_t suff = low_n;
     for (size_t a = 0; a < n_alig; a++, suff++) {
       chrom = sa_index->CHROM[suff];
-      g_start = sa_index->SA[suff] - sa_index->genome->chrom_offsets[chrom];
+      g_start = sa_index->SA[suff] - sa_index->genome->seq_offsets[chrom];
       
       //char cigar_str[2048];
       //sprintf(cigar_str, "%i%c", read->length, 'M');
@@ -2126,7 +2126,7 @@ int sa_generate_cals(fastq_read_t *read,
 	//Storage Mappings
 	for (size_t suff = low; suff <= high; suff++) {	
 	  chrom = sa_index->CHROM[suff];
-	  g_start = sa_index->SA[suff] - sa_index->genome->chrom_offsets[chrom] + 1;
+	  g_start = sa_index->SA[suff] - sa_index->genome->seq_offsets[chrom] + 1;
 	  
 	  //printf("\tSTORE SEED %i:[%lu|%i-%i|%lu]\n", chrom, g_start, read_pos, read_pos + suffix_len - 1, g_start + suffix_len - 1);
 	  generate_cals(chrom + 1, s, 
@@ -2166,7 +2166,7 @@ int sa_generate_cals(fastq_read_t *read,
 	//Storage Mappings
 	for (size_t suff = low; suff <= high; suff++) {	
 	  chrom = sa_index->CHROM[suff];
-	  g_start = sa_index->SA[suff] - sa_index->genome->chrom_offsets[chrom] + 1;
+	  g_start = sa_index->SA[suff] - sa_index->genome->seq_offsets[chrom] + 1;
 	  generate_cals(chrom + 1, s, 
 			g_start, g_start + suffix_len - 1, 
 			read_pos, read_pos + suffix_len - 1,
@@ -2181,7 +2181,7 @@ int sa_generate_cals(fastq_read_t *read,
     if (!st) { cal_mng = cal_mng_p; }
     else  { cal_mng = cal_mng_n; }
 	
-    for (unsigned int i = 0; i < cal_mng->num_chroms; i++) {
+    for (unsigned int i = 0; i < cal_mng->num_seqs; i++) {
       cal_list = cal_mng->cals_lists[i];
       num_cals = linked_list_size(cal_list);
       //printf("(%i)%i:Num CAls %i\n", st, i, num_cals);
@@ -2745,10 +2745,10 @@ void sa_complete_pairs(sa_wf_batch_t *wf_batch) {
 
 cal_mng_t * cal_rna_mng_new(sa_genome3_t *genome) {
 
-  int num_chroms = genome->num_chroms;
+  int num_seqs = genome->num_seqs;
 
-  linked_list_t **cals_lists = (linked_list_t **) malloc (sizeof(linked_list_t *) * num_chroms);
-  for (unsigned int i = 0; i < num_chroms; i++) {
+  linked_list_t **cals_lists = (linked_list_t **) malloc (sizeof(linked_list_t *) * num_seqs);
+  for (unsigned int i = 0; i < num_seqs; i++) {
     cals_lists[i] = linked_list_new(COLLECTION_MODE_ASYNCHRONIZED);
   }
 
@@ -2756,7 +2756,7 @@ cal_mng_t * cal_rna_mng_new(sa_genome3_t *genome) {
   p->read_length = 10;
   p->min_read_area = 100;
   p->max_read_area = 0;
-  p->num_chroms = num_chroms;
+  p->num_seqs = num_seqs;
   p->cals_lists = cals_lists;
 
   return p;
@@ -2768,7 +2768,7 @@ cal_mng_t * cal_rna_mng_new(sa_genome3_t *genome) {
 void cal_rna_mng_free(cal_mng_t *p) {
   if (p) {
     if (p->cals_lists) {
-      for (unsigned int i = 0; i < p->num_chroms; i++) {
+      for (unsigned int i = 0; i < p->num_seqs; i++) {
 	if (p->cals_lists[i]) {
 	  linked_list_free(p->cals_lists[i], (void *)seed_cal_free);
 	}
@@ -3902,7 +3902,7 @@ int sa_rna_mapper_last(void *data) {
 	//Report Exact Maps! (+)
 	for (size_t suff = low_p; suff <= high_p; suff++) {
 	  chrom = sa_index->CHROM[suff];	
-	  g_start = sa_index->SA[suff] - sa_index->genome->chrom_offsets[chrom];
+	  g_start = sa_index->SA[suff] - sa_index->genome->seq_offsets[chrom];
 	  
 	  cal_t *cal_tmp = cal_simple_new(chrom + 1,
 					  0, g_start, g_start + suffix_len_p);
@@ -3990,7 +3990,7 @@ int sa_rna_mapper_last(void *data) {
       if (suffix_len_n && num_suffixes_n) {
 	for (size_t suff = low_n; suff <= high_n; suff++) {
 	  chrom = sa_index->CHROM[suff];
-	  g_start = sa_index->SA[suff] - sa_index->genome->chrom_offsets[chrom];
+	  g_start = sa_index->SA[suff] - sa_index->genome->seq_offsets[chrom];
 
 	  cal_t *cal_tmp = cal_simple_new(chrom + 1,
 					  1, g_start, g_start + suffix_len_n);
@@ -4130,7 +4130,7 @@ int sa_rna_mapper_last(void *data) {
 	    //Storage Mappings
 	    for (size_t suff = low; suff <= high; suff++) {	
 	      chrom = sa_index->CHROM[suff];
-	      g_start = sa_index->SA[suff] - sa_index->genome->chrom_offsets[chrom] + 1;
+	      g_start = sa_index->SA[suff] - sa_index->genome->seq_offsets[chrom] + 1;
 	      //printf("\tSTORE SEED %i:[%lu|%i-%i|%lu]\n", chrom, g_start, read_pos, read_pos + suffix_len - 1, g_start + suffix_len - 1);
 	      generate_cals(chrom + 1, s, 
 			    g_start, g_start + suffix_len - 1, 
@@ -4173,7 +4173,7 @@ int sa_rna_mapper_last(void *data) {
 	      //printf("\tL.STORE SEED %i:[%lu|%i-%i|%lu]\n", chrom, g_start, read_pos, read_pos + suffix_len - 1, g_start + suffix_len - 1);
 
 	      chrom = sa_index->CHROM[suff];
-	      g_start = sa_index->SA[suff] - sa_index->genome->chrom_offsets[chrom] + 1;
+	      g_start = sa_index->SA[suff] - sa_index->genome->seq_offsets[chrom] + 1;
 	      generate_cals(chrom + 1, s, 
 			    g_start, g_start + suffix_len - 1, 
 			    read_pos, read_pos + suffix_len - 1,
@@ -4196,7 +4196,7 @@ int sa_rna_mapper_last(void *data) {
 	if (!st) { p = cal_mng_p; }
 	else  { p = cal_mng_n; }
 	
-	for (unsigned int i = 0; i < p->num_chroms; i++) {
+	for (unsigned int i = 0; i < p->num_seqs; i++) {
 	  cal_list = p->cals_lists[i];
 	  num_cals = linked_list_size(cal_list);
 	  //printf("(%i)%i:Num CAls %i\n", st, i, num_cals);

@@ -22,6 +22,8 @@ options_t *options_new(void) {
   options->realignment = 0;
   options->recalibration = 0;
   options->adapter = NULL;
+  options->exclude_alt = 0;
+  options->exclude_scaffold = 0;
   //GET Number System Cores
   //----------------------------------------------
   if (num_cores = get_optimal_cpu_num_threads()) {
@@ -231,6 +233,7 @@ void options_display(options_t *options) {
      if (options->genome_filename != NULL) {
 	  genome_filename =  strdup(options->genome_filename);
      }
+
      unsigned int  report_all = (unsigned int)options->report_all;
      unsigned int  report_n_best = (unsigned int)options->report_n_best;
      unsigned int  report_n_hits = (unsigned int)options->report_n_hits;
@@ -285,11 +288,11 @@ void options_display(options_t *options) {
      }
      printf("\tFastQ gzip mode: %s\n", options->gzip == 1 ? "Enable" : "Disable");
      printf("\tIndex directory name: %s\n", bwt_dirname);
-     printf("\tOutput directory name: %s\n", output_name);
-          
+     printf("\tOutput directory name: %s\n", output_name);          
      printf("\tOutput file format: %s\n", 
 	    (options->bam_format || options->realignment || options->recalibration) ? "BAM" : "SAM");
-     printf("\tFastQ gzip mode: %s\n", options->gzip == 1 ? "Enable" : "Disable");
+     printf("\tExclude ALT mappings: %s\n", options->exclude_alt == 1 ? "Yes" : "No");
+     printf("\tExclude scaffold mappings: %s\n", options->exclude_scaffold == 1 ? "Yes" : "No");
      printf("\tAdapter: %s\n", (adapter ? adapter : "Not present"));
      printf("\n");
 
@@ -430,7 +433,6 @@ void options_to_file(options_t *options, FILE *fd) {
 	 (options->bam_format || options->realignment || options->recalibration) ? "SAM" : "BAM");
   fprintf(fd, "\n\n");
 
-
   fprintf(fd, "=  A R C H I T E C T U R E    P A R A M E T E R S\n"); 
   fprintf(fd, "=-----------------------------------------------=\n");
   fprintf(fd, "= Number of cpu threads %d\n",  num_cpu_threads);
@@ -465,6 +467,8 @@ void options_to_file(options_t *options, FILE *fd) {
 
   fprintf(fd, "= M A P P I N G    F I L T E R S \n");
   fprintf(fd, "=------------------------------=\n");
+  fprintf(fd, "= Exclude ALT mappings: %s\n", options->exclude_alt == 1 ? "Yes" : "No");
+  fprintf(fd, "= Exclude scaffold mappings: %s\n", options->exclude_scaffold == 1 ? "Yes" : "No");
   fprintf(fd, "= For reads: %d mappings maximum, otherwise discarded\n", options->filter_read_mappings);
   fprintf(fd, "= For seeds: %d mappings maximum, otherwise discarded\n", options->filter_seed_mappings);
   fprintf(fd, "\n\n");
@@ -510,7 +514,6 @@ void options_to_file(options_t *options, FILE *fd) {
   }
 
   free(output_name);
-  
 }
 
 //--------------------------------------------------------------------
@@ -558,6 +561,8 @@ void** argtable_options_new(int mode) {
   argtable[count++] = arg_lit0(NULL, "recalibration", "Base quality score recalibration");
   argtable[count++] = arg_str0("a", "adapter", NULL, "Adapter sequence in the read");
   argtable[count++] = arg_lit0("v", "version", "Display the HPG Aligner version");
+  argtable[count++] = arg_lit0(NULL, "exclude-alt", "Exclude alternative sequences");
+  argtable[count++] = arg_lit0(NULL, "exclude-scaffold", "Exclude scaffold sequences");
 
   if (mode == DNA_MODE) {
     argtable[count++] = arg_int0(NULL, "num-seeds", NULL, "Number of seeds");
@@ -662,6 +667,8 @@ options_t *read_CLI_options(void **argtable, options_t *options) {
 
   if (options->adapter) options->adapter_length = strlen(options->adapter);
   if (((struct arg_int*)argtable[++count])->count) { options->version = ((struct arg_int*)argtable[count])->count; }
+  if (((struct arg_int*)argtable[++count])->count) { options->exclude_alt = ((struct arg_int*)argtable[count])->count; }
+  if (((struct arg_int*)argtable[++count])->count) { options->exclude_scaffold = ((struct arg_int*)argtable[count])->count; }
 
   if (options->mode == DNA_MODE) {
     if (((struct arg_int*)argtable[++count])->count) { options->num_seeds = *(((struct arg_int*)argtable[count])->ival); }

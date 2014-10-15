@@ -3,38 +3,186 @@
 #include "options.h"
  
 #define PROGRESS 1000000
+#define MAX_LINE_LENGTH 4096
 
 //--------------------------------------------------------------------------------------
 //--------------------------------------------------------------------------------------
 
-sa_genome3_t *read_genome3(char *filename) {
+alt_names_t *alt_names_new(char *alt_filename) {
+  // open alternative names file
+  FILE *f = fopen(alt_filename, "r");
+  if (f == NULL) {
+    printf("Error reading alternative names filename %s\n", alt_filename);
+    exit(-1);
+  }
+
+  size_t count, num_alts = 0;
+  char line[MAX_LINE_LENGTH], alt_name[MAX_LINE_LENGTH], chrom_name[MAX_LINE_LENGTH];
+  while (fgets(line, MAX_LINE_LENGTH, f) != NULL) {
+    num_alts++;
+  }
+  fseek(f, 0, SEEK_SET);	
+
+  char **alt_names = (char **) calloc(num_alts, sizeof(char *));
+  char **chrom_names = (char **) calloc(num_alts, sizeof(char *));
+  count = 0;
+  while (fgets(line, MAX_LINE_LENGTH, f) != NULL) {
+    sscanf(line, "%s\t%s\n", alt_name, chrom_name);
+    alt_names[count] = strdup(alt_name);
+    chrom_names[count] = strdup(chrom_name);
+    count++;
+  }
+
+  fclose(f);
+  
+  alt_names_t *p = (alt_names_t *) calloc(1, sizeof(alt_names_t));
+  p->size = num_alts;
+  p->alt_names = alt_names;
+  p->chrom_names = chrom_names;
+  return p;
+}
+
+//--------------------------------------------------------------------------------------
+
+void alt_names_free(alt_names_t *p) {
+  if (p) {
+    for (size_t i = 0; i < p->size; i++) {
+      if (p->alt_names && p->alt_names[i]) free(p->alt_names[i]);
+      if (p->chrom_names && p->chrom_names[i]) free(p->chrom_names[i]);
+    }
+    if (p->alt_names) free(p->alt_names);
+    if (p->chrom_names) free(p->chrom_names);
+    free(p);
+  }
+}
+
+//--------------------------------------------------------------------------------------
+
+int alt_names_exists(char *alt_name, alt_names_t *p) {
+  if (p) {
+    for (size_t i = 0; i < p->size; i++) {
+      if (strcmp(alt_name, p->alt_names[i]) == 0) {
+	return 1;
+      }
+    }
+  }
+  return 0;
+}
+
+//--------------------------------------------------------------------------------------
+
+char *alt_names_get_chrom_name(char *alt_name, alt_names_t *p) {
+  if (p) {
+    for (size_t i = 0; i < p->size; i++) {
+      if (strcmp(alt_name, p->alt_names[i]) == 0) {
+	return p->chrom_names[i];
+      }
+    }
+  }
+  return NULL;
+}
+
+//--------------------------------------------------------------------------------------
+
+char *alt_names_display(alt_names_t *p) {
+  if (p) {
+    printf("%lu\n", p->size);
+    for (size_t i = 0; i < p->size; i++) {
+      printf("%lu\t%s\t%s\n", i, p->alt_names[i], p->chrom_names[i]);
+    }
+  }
+}
+
+//--------------------------------------------------------------------------------------
+//--------------------------------------------------------------------------------------
+
+size_t load_scaffold_names(char *scaffold_filename, array_list_t *scaffold_names) {
+  // open scaffold names file
+  FILE *f = fopen(scaffold_filename, "r");
+  if (f == NULL) {
+    printf("Error reading scaffold names filename %s\n", scaffold_filename);
+    exit(-1);
+  }
+
+  char line[MAX_LINE_LENGTH], scaffold_name[MAX_LINE_LENGTH];
+  while (fgets(line, MAX_LINE_LENGTH, f) != NULL) {
+    sscanf(line, "%s\n", scaffold_name);
+    array_list_insert(strdup(scaffold_name), scaffold_names);
+  }
+
+  fclose(f);
+  
+  return array_list_size(scaffold_names);
+}
+
+//--------------------------------------------------------------------------------------
+
+int exists_scaffold_name(char *name, array_list_t *scaffold_names) {
+  size_t size = array_list_size(scaffold_names);
+  for (size_t i = 0; i < size; i++) {
+    if (strcmp((char *)array_list_get(i, scaffold_names), name) == 0) {
+      return 1;
+    }
+  }
+  return 0;
+}
+
+//--------------------------------------------------------------------------------------
+//--------------------------------------------------------------------------------------
+
+sa_genome3_t *read_genome3(char *genome_filename) {
+  return read_genome3_ex(genome_filename, NULL, NULL);
+}
+
+//--------------------------------------------------------------------------------------
+
+sa_genome3_t *read_genome3_ex(char *genome_filename, char *alt_filename,
+			      char *scaffold_filename) {
 
   const int MAX_CHROM_NAME_LENGHT = 1024;
-  uint reading_name, chrom_name_count = 0;
-  char chrom_name[MAX_CHROM_NAME_LENGHT];
+  uint reading_name, seq_name_count = 0;
+  char seq_name[MAX_CHROM_NAME_LENGHT];
 
-  // open fasta file
-  FILE *f = fopen(filename, "r");
+  alt_names_t *alt_names = NULL;
+  if (alt_filename) {
+    alt_names = alt_names_new(alt_filename);
+    //alt_names_display(alt_names);
+  }
+
+  array_list_t *scaffold_names = NULL;
+  if (scaffold_filename) {
+    scaffold_names = array_list_new(100, 1.25f, COLLECTION_MODE_ASYNCHRONIZED);
+    load_scaffold_names(scaffold_filename, scaffold_names);
+  }
+
+  // open fasta genome file
+  FILE *f = fopen(genome_filename, "r");
   if (f == NULL) {
-    printf("Error reading filename %s\n", filename);
+    printf("Error reading genome filename %s\n", genome_filename);
     exit(-1);
   }
 
   // get file length
   fseek(f, 0, SEEK_END);
   long int file_length = ftell(f);
-  printf("file %s length = %lu\n", filename, file_length);
+  printf("file %s length = %lu\n", genome_filename, file_length);
   fseek(f, 0, SEEK_SET);	
 
   // read genome
   size_t num_A = 0, num_C = 0, num_G = 0, num_N = 0, num_T = 0;
-  size_t chrom_length = 0;
-  size_t num_chroms = 0, num_allocated_chroms = 100;
-  size_t *chrom_lengths = (size_t *) calloc(num_allocated_chroms, sizeof(size_t));
-  char **chrom_names = (char **) calloc(num_allocated_chroms, sizeof(char *));
+  size_t seq_length = 0;
+  size_t num_seqs = 0, num_allocated_seqs = 100;
+  int *seq_types = (int *) calloc(num_allocated_seqs, sizeof(int));
+  size_t *seq_chroms = (size_t *) calloc(num_allocated_seqs, sizeof(size_t));
+  size_t *seq_starts = (size_t *) calloc(num_allocated_seqs, sizeof(size_t));
+  size_t *seq_ends = (size_t *) calloc(num_allocated_seqs, sizeof(size_t));
+  size_t *seq_lengths = (size_t *) calloc(num_allocated_seqs, sizeof(size_t));
+  char **seq_names = (char **) calloc(num_allocated_seqs, sizeof(char *));
   char *S = (char *) calloc(file_length + 1, sizeof(char));
 
-  size_t skip = 0, l = 0, process = 0;
+  int skip = 0, hap = 0, initial_flank = 1;
+  size_t l = 0, process = 0, hap_padding = 0;
+
   char c;
   while ((c = getc(f)) != EOF) {
     process++;
@@ -43,55 +191,147 @@ sa_genome3_t *read_genome3(char *filename) {
     if (c == '>') {
       printf("%c", c);
       if (skip == 0) {
-	num_chroms++;
+	num_seqs++;
 	reading_name = 1;
-	// to do: get and save chromosome name
-	if (num_chroms > 1) {
-	  chrom_lengths[num_chroms - 2] = chrom_length;
-	  printf("setting chrom %lu: length = %lu (but num_chroms = %lu)\n", num_chroms - 2, chrom_length, num_chroms);
-	  chrom_length = 0;
-	  if (num_chroms >= num_allocated_chroms) {
-	    num_allocated_chroms += 50;
-	    chrom_lengths = (size_t *) realloc(chrom_lengths, num_allocated_chroms * sizeof(size_t));
-	    chrom_names = (char **) realloc(chrom_names, num_allocated_chroms * sizeof(char *));
+	// to do: get and save sequence name
+	if (num_seqs > 1) {
+	  if (hap && hap_padding) {
+	    seq_ends[num_seqs - 2] = hap_padding;
+	    num_N -= hap_padding; seq_length -= hap_padding; l -= hap_padding;
+	  }
+	  seq_lengths[num_seqs - 2] = seq_length;
+
+	  printf("setting seq %lu: length = %lu (but num_seqs = %lu)\n", num_seqs - 2, seq_length, num_seqs);
+	  hap = 0;
+	  hap_padding = 0;
+	  initial_flank = 1;
+	  seq_length = 0;
+	  if (num_seqs >= num_allocated_seqs) {
+	    num_allocated_seqs += 50;
+
+	    seq_types = (int *) realloc(seq_types, num_allocated_seqs * sizeof(int));
+	    seq_chroms = (size_t *) realloc(seq_chroms, num_allocated_seqs * sizeof(size_t));
+	    seq_starts = (size_t *) realloc(seq_starts, num_allocated_seqs * sizeof(size_t));
+	    seq_ends = (size_t *) realloc(seq_ends, num_allocated_seqs * sizeof(size_t));
+
+	    seq_lengths = (size_t *) realloc(seq_lengths, num_allocated_seqs * sizeof(size_t));
+	    seq_names = (char **) realloc(seq_names, num_allocated_seqs * sizeof(char *));
 	  }
 	}
       }
       skip = 1;
     } else if (c == '\n') {
       if (reading_name) {
-	chrom_name[chrom_name_count] = 0;
-	chrom_names[num_chroms - 1] = strdup(chrom_name);
-	//	printf("************ chrom. name = %s (num. chrom = %u)\n", chrom_name, num_chroms);
-	chrom_name_count = 0;
+	seq_name[seq_name_count] = 0;
+	seq_names[num_seqs - 1] = strdup(seq_name);
+
+	if (alt_names) {
+	  if (alt_names_exists(seq_name, alt_names)) {
+	    seq_types[num_seqs - 1] = ALT_SEQ_TYPE;
+	    hap = 1;
+	  } else if (scaffold_names) {
+	    if (exists_scaffold_name(seq_name, scaffold_names)) {
+	      seq_types[num_seqs - 1] = SCAFFOLD_SEQ_TYPE;
+	      hap = 0;
+	    } else {
+	      seq_types[num_seqs - 1] = CHROM_SEQ_TYPE;
+	      hap = 0;
+	    }
+	  } else if (strcmp(seq_name, "scaffold") == 0) {
+	    seq_types[num_seqs - 1] = SCAFFOLD_SEQ_TYPE;
+	    hap = 0;
+	  } else {
+	    seq_types[num_seqs - 1] = CHROM_SEQ_TYPE;
+	    hap = 0;
+	  }
+	}
+
+	seq_name_count = 0;
 	reading_name = 0;
       }
-      if (skip == 1) printf("%c", c);
+      if (skip == 1) {
+	printf("%c", c);
+      }
       skip = 0;
     } else if (c == ' ' || c == '\t') {
+      printf("%c", c);
       if (reading_name) {
-	chrom_name[chrom_name_count] = 0;
-	chrom_names[num_chroms - 1] = strdup(chrom_name);
-	//	printf("******** chrom. name = %s (nu. chrom = %u)\n", chrom_name, num_chroms);
-	chrom_name_count = 0;
+	seq_name[seq_name_count] = 0;
+	seq_names[num_seqs - 1] = strdup(seq_name);
+
+	if (alt_names) {
+	  if (alt_names_exists(seq_name, alt_names)) {
+	    seq_types[num_seqs - 1] = ALT_SEQ_TYPE;
+	    hap = 1;
+	  } else if (scaffold_names) {
+	    if (exists_scaffold_name(seq_name, scaffold_names)) {
+	      seq_types[num_seqs - 1] = SCAFFOLD_SEQ_TYPE;
+	      hap = 0;
+	    } else {
+	      seq_types[num_seqs - 1] = CHROM_SEQ_TYPE;
+	      hap = 0;
+	    }
+	  } else if (strcmp(seq_name, "scaffold") == 0) {
+	    seq_types[num_seqs - 1] = SCAFFOLD_SEQ_TYPE;
+	    hap = 0;
+	  } else {
+	    seq_types[num_seqs - 1] = CHROM_SEQ_TYPE;
+	    hap = 0;
+	  }
+	}
+
+	seq_name_count = 0;
 	reading_name = 0;
       }
     } else {
       if (skip == 0) {
-	if      (c == 'A' || c == 'a') { S[l++] = 'A'; num_A++; chrom_length++; }
-	else if (c == 'C' || c == 'c') { S[l++] = 'C'; num_C++; chrom_length++; }
-	else if (c == 'G' || c == 'g') { S[l++] = 'G'; num_G++; chrom_length++; }
-	else if (c == 'T' || c == 't') { S[l++] = 'T'; num_T++; chrom_length++; }
-	else if (c == 'N' || c == 'n') { S[l++] = 'N'; num_N++; chrom_length++; }
-	else {
+	if (c == 'A' || c == 'a') { 
+	  // A
+	  S[l++] = 'A'; num_A++; seq_length++; 
+	  if (hap && hap_padding && initial_flank) {
+	    seq_starts[num_seqs - 1] = hap_padding;
+	  }
+	  hap_padding = 0;
+	  initial_flank = 0;
+	} else if (c == 'C' || c == 'c') { 
+	  // C
+	  S[l++] = 'C'; num_C++; seq_length++; 
+	  if (hap && hap_padding && initial_flank) {
+	    seq_starts[num_seqs - 1] = hap_padding;
+	  }
+	  hap_padding = 0;
+	  initial_flank = 0;
+	} else if (c == 'G' || c == 'g') { 
+	  // G
+	  S[l++] = 'G'; num_G++; seq_length++; 
+	  if (hap && hap_padding && initial_flank) {
+	    seq_starts[num_seqs - 1] = hap_padding;
+	  }
+	  hap_padding = 0;
+	  initial_flank = 0;
+	} else if (c == 'T' || c == 't') { 
+	  // T
+	  S[l++] = 'T'; num_T++; seq_length++; 
+	  if (hap && hap_padding && initial_flank) {
+	    seq_starts[num_seqs - 1] = hap_padding;
+	  }
+	  hap_padding = 0;
+	  initial_flank = 0;
+	} else if (c == 'N' || c == 'n') { 
+	  // N
+	  hap_padding++;
+	  if (!hap || (hap && !initial_flank)) {
+	    S[l++] = 'N'; num_N++; seq_length++; 
+	  }
+	} else {
 	  printf("Unknown character %c at %lu position\n", c, process);
 	}
       } else {
 	if (reading_name) {
-	  chrom_name[chrom_name_count++] = c;
-	  if (chrom_name_count >= MAX_CHROM_NAME_LENGHT) {
-	    chrom_name[MAX_CHROM_NAME_LENGHT - 1] = 0;
-	    printf("Chromosome name (%s) exceeds max. length (%u)", chrom_name, MAX_CHROM_NAME_LENGHT);
+	  seq_name[seq_name_count++] = c;
+	  if (seq_name_count >= MAX_CHROM_NAME_LENGHT) {
+	    seq_name[MAX_CHROM_NAME_LENGHT - 1] = 0;
+	    printf("Sequence name (%s) exceeds max. length (%u)", seq_name, MAX_CHROM_NAME_LENGHT);
 	    exit(-1);
 	  }
 	}
@@ -99,14 +339,41 @@ sa_genome3_t *read_genome3(char *filename) {
       }
     }
   }
-  chrom_lengths[num_chroms - 1] = chrom_length;
+  if (hap && hap_padding) {
+    seq_ends[num_seqs - 1] = hap_padding;
+    num_N -= hap_padding; seq_length -= hap_padding; l -= hap_padding;
+  }
+  seq_lengths[num_seqs - 1] = seq_length;
   S[l++] = '$';
 
   fclose(f);
-  printf("reading %0.2f %c...\n", 100.0f, '%');
+  printf("...genome reading done!\n");
+
+  // update chromosomes for ALT sequences: chromosomes and flanks
+  char *chrom_name;
+  for (size_t i = 0; i < num_seqs; i++) {
+    if (IS_ALT_SEQ(seq_types, i)) {
+      chrom_name = alt_names_get_chrom_name(seq_names[i], alt_names);
+      if (chrom_name) {
+	for (size_t j = 0; j < num_seqs; j++) {
+	  if (strcmp(chrom_name, seq_names[j]) == 0) {
+	    // set chrom
+	    seq_chroms[i] = j;
+	    break;
+	  }
+	}
+      }
+    }
+  }
+
+  // free memory
+  if (alt_names) alt_names_free(alt_names);
+  if (scaffold_names) array_list_free(scaffold_names, (void *) free);
 
   // create sa_genome3_t and return it
-  sa_genome3_t *genome = sa_genome3_new(l, num_chroms, chrom_lengths, chrom_names, S);
+  sa_genome3_t *genome = sa_genome3_new(l, num_seqs, seq_lengths, seq_types, 
+					seq_chroms, seq_starts, seq_ends, 
+					seq_names, S);
   sa_genome3_set_nt_counters(num_A, num_C, num_G, num_N, num_T, genome);
   return genome;
 }
@@ -119,7 +386,7 @@ char *global_S;
 
 typedef struct suffix_tmp {
   uint value;
-  unsigned char chrom;
+  unsigned short int seq;
 } suffix_tmp_t;
 
 
@@ -208,7 +475,7 @@ void compute_PRE(uint num_suffixes, char *S, uint *SA, uint *PRE) {
 //--------------------------------------------------------------------------------------
 // create a SA index from genome
 //--------------------------------------------------------------------------------------
-
+/*
 void sa_index3_build(char *genome_filename, uint k_value, char *sa_index_dirname) {
 
   FILE *f_tab;
@@ -267,24 +534,24 @@ void sa_index3_build(char *genome_filename, uint k_value, char *sa_index_dirname
 
   char nt;
   uint c = 0;
-  for (uint i = 0; i < genome->num_chroms; i++) {
-    for (uint j = 0; j < genome->chrom_lengths[i]; j++) {
+  for (size_t i = 0; i < genome->num_chroms; i++) {
+    for (size_t j = 0; j < genome->chrom_lengths[i]; j++) {
       nt = genome->S[c];
       if (nt == 'A' || nt == 'a') {
 	tmp[0][tmp_A].value = c;
-	tmp[0][tmp_A].chrom = (unsigned char) i;
+	tmp[0][tmp_A].seq = (unsigned short int) i;
 	tmp_A++;
       } else if (nt == 'C' || nt == 'c') {
 	tmp[1][tmp_C].value = c;
-	tmp[1][tmp_C].chrom = (unsigned char) i;
+	tmp[1][tmp_C].seq = (unsigned short int) i;
 	tmp_C++;
       } else if (nt == 'G' || nt == 'g') {
 	tmp[2][tmp_G].value = c;
-	tmp[2][tmp_G].chrom = (unsigned char) i;
+	tmp[2][tmp_G].seq = (unsigned short int) i;
 	tmp_G++;
       } else if (nt == 'T' || nt == 't') {
 	tmp[3][tmp_T].value = c;
-	tmp[3][tmp_T].chrom = (unsigned char) i;
+	tmp[3][tmp_T].seq = (unsigned short int) i;
 	tmp_T++;
       }
       c++;
@@ -320,7 +587,7 @@ void sa_index3_build(char *genome_filename, uint k_value, char *sa_index_dirname
   f_tab = fopen(filename_tab, "wb");
   for (int i = 0; i < 4; i++) {
     for (int j = 0; j < nts[i]; j++) {
-      fwrite(&(tmp[i][j].chrom), sizeof(unsigned char), 1, f_tab);
+      fwrite(&(tmp[i][j].seq), sizeof(unsigned short int), 1, f_tab);
     }
   }
   fclose(f_tab);
@@ -374,18 +641,29 @@ void sa_index3_build(char *genome_filename, uint k_value, char *sa_index_dirname
   fprintf(f_tab, "%i\n", pre_length);
   fprintf(f_tab, "%i\n", num_suffixes);
   fprintf(f_tab, "%lu\n", genome->length);
-  fprintf(f_tab, "%lu\n", genome->num_chroms);
-  for (size_t i = 0; i < genome->num_chroms; i++) {
-    fprintf(f_tab, "%s\t%lu\n", 
+  fprintf(f_tab, "%lu\n", genome->num_seqs);
+  for (size_t i = 0; i < genome->num_seqs; i++) {
+    fprintf(f_tab, "%s\t%lu\t%i\t%lu\t%lu\t%lu\n", 
 	   (genome->chrom_names ? genome->chrom_names[i] : "no-name"), 
-	    genome->chrom_lengths[i]);
+	    genome->chrom_lengths[i],
+	    genome->seq_types[i],
+	    genome->seq_chroms[i],
+	    genome->seq_starts[i],
+	    genome->seq_ends[i]);
   }
   fclose(f_tab);
+}
+*/
+//--------------------------------------------------------------------------------------
+
+void sa_index3_build_k18(char *genome_filename, uint k_value, char *sa_index_dirname) {
+  sa_index3_build_k18_ex(genome_filename, NULL, NULL, k_value, sa_index_dirname);
 }
 
 //--------------------------------------------------------------------------------------
 
-void sa_index3_build_k18(char *genome_filename, uint k_value, char *sa_index_dirname) {
+void sa_index3_build_k18_ex(char *genome_filename, char *alt_filename, char *scaffold_filename,
+			    uint k_value, char *sa_index_dirname) {
 
   //printf("\n***************** K value = 18 ***************************\n");
   k_value = 18;
@@ -429,21 +707,21 @@ void sa_index3_build_k18(char *genome_filename, uint k_value, char *sa_index_dir
   sprintf(filename_tab, "%s/%s.S", sa_index_dirname, prefix);
   printf("\nreading file genome %s...\n", genome_filename);
   gettimeofday(&start, NULL);
-  sa_genome3_t *genome = read_genome3(genome_filename);
+  sa_genome3_t *genome = read_genome3_ex(genome_filename, alt_filename, scaffold_filename);
   gettimeofday(&stop, NULL);
   
-  if (genome->length > max_uint || genome->num_chroms > 256) {
+  if (genome->length > MAX_GENOME_LENGTH || genome->num_seqs > MAX_NUM_SEQUENCES) {
     printf("Genome not supported: (%s)\n", genome_filename);
     printf("\tGenome length: %lu\n", genome->length);
-    printf("\tNumber segments (chromosomes, scaffolds,...): %i\n", genome->num_chroms);
+    printf("\tNumber segments (chromosomes, scaffolds,...): %i\n", genome->num_seqs);
     printf("\n");
     printf("Genomes supported by HPG Aligner %s\n", HPG_ALIGNER_VERSION);
-    printf("\tMax. genome length: %lu\n", max_uint);
-    printf("\tMax. number segments (chromosomes, scaffolds,...): %i\n", 256);
+    printf("\tMax. genome length: %lu\n", MAX_GENOME_LENGTH);
+    printf("\tMax. number segments (chromosomes, scaffolds,...): %i\n", MAX_NUM_SEQUENCES);
     exit(-1);
   }
   
-  sa_genome3_display(genome);
+  //sa_genome3_display(genome);
 
   // write S to file
   f_tab = fopen(filename_tab, "wb");
@@ -459,117 +737,92 @@ void sa_index3_build_k18(char *genome_filename, uint k_value, char *sa_index_dir
   //-----------------------------------------
 
   char nt;
+  uint A_counter = 0, IA_counter = 0;
   size_t num_suffixes = genome->num_A + genome->num_C + genome->num_G + genome->num_T;
 
+  printf("\ncomputing SA and CHROM table...\n");
+  gettimeofday(&start, NULL);
+  suffix_tmp_t *tmp[4];
+  size_t tmp_A = 0, tmp_C = 0, tmp_G = 0, tmp_T = 0, nts[4];
+  
+  nts[0] = genome->num_A;
+  nts[1] = genome->num_C;
+  nts[2] = genome->num_G;
+  nts[3] = genome->num_T;
+  
+  for (int i = 0; i < 4; i++) {
+    tmp[i] = (suffix_tmp_t *) malloc(nts[i] * sizeof(suffix_tmp_t));
+  }
+  
+  size_t c = 0;
+  for (size_t i = 0; i < genome->num_seqs; i++) {
+    for (size_t j = 0; j < genome->seq_lengths[i]; j++) {
+      nt = genome->S[c];
+      if (nt == 'A' || nt == 'a') {
+	tmp[0][tmp_A].value = c;
+	tmp[0][tmp_A].seq = (unsigned short int) i;
+	tmp_A++;
+      } else if (nt == 'C' || nt == 'c') {
+	tmp[1][tmp_C].value = c;
+	tmp[1][tmp_C].seq = (unsigned short int) i;
+	tmp_C++;
+      } else if (nt == 'G' || nt == 'g') {
+	tmp[2][tmp_G].value = c;
+	tmp[2][tmp_G].seq = (unsigned short int) i;
+	tmp_G++;
+      } else if (nt == 'T' || nt == 't') {
+	tmp[3][tmp_T].value = c;
+	tmp[3][tmp_T].seq = (unsigned short int) i;
+	tmp_T++;
+      }
+      c++;
+    }
+  }
+  
+  assert(tmp_A == genome->num_A);
+  assert(tmp_C == genome->num_C);
+  assert(tmp_G == genome->num_G);
+  assert(tmp_T == genome->num_T);
+  
+  for (size_t i = 0; i < genome->length; i++) {
+    if (genome->S[i] == 'N' || genome->S[i] == 'n') {
+      genome->S[i] = 'A';
+    }
+  }
+  global_S = genome->S;
+  
+  #pragma omp parallel for num_threads(4)
+  for (size_t i = 0; i < 4; i++) {
+    qsort(tmp[i], nts[i], sizeof(suffix_tmp_t), suffix_tmp_cmp3);
+  }
+  
+  gettimeofday(&stop, NULL);
+  printf("end of computing SA and CHROM table in %0.2f s\n", 
+	 (stop.tv_sec - start.tv_sec) + (stop.tv_usec - start.tv_usec) / 1000000.0f);  
+  
+  // write SA to file
   sprintf(filename_tab, "%s/%s.SA", sa_index_dirname, prefix);
-  f_tab = fopen(filename_tab, "rb");
-  if (!f_tab) {
-    printf("\ncomputing SA and CHROM table...\n");
-    gettimeofday(&start, NULL);
-    suffix_tmp_t *tmp[4];
-    size_t tmp_A = 0, tmp_C = 0, tmp_G = 0, tmp_T = 0, nts[4];
-    
-    nts[0] = genome->num_A;
-    nts[1] = genome->num_C;
-    nts[2] = genome->num_G;
-    nts[3] = genome->num_T;
-    
-    for (int i = 0; i < 4; i++) {
-      tmp[i] = (suffix_tmp_t *) malloc(nts[i] * sizeof(suffix_tmp_t));
+  f_tab = fopen(filename_tab, "wb");
+  for (size_t i = 0; i < 4; i++) {
+    for (size_t j = 0; j < nts[i]; j++) {
+      fwrite(&(tmp[i][j].value), sizeof(uint), 1, f_tab);
     }
-    
-    size_t c = 0;
-    for (size_t i = 0; i < genome->num_chroms; i++) {
-      for (size_t j = 0; j < genome->chrom_lengths[i]; j++) {
-	nt = genome->S[c];
-	if (nt == 'A' || nt == 'a') {
-	  tmp[0][tmp_A].value = c;
-	  tmp[0][tmp_A].chrom = (unsigned char) i;
-	  tmp_A++;
-	} else if (nt == 'C' || nt == 'c') {
-	  tmp[1][tmp_C].value = c;
-	  tmp[1][tmp_C].chrom = (unsigned char) i;
-	  tmp_C++;
-	} else if (nt == 'G' || nt == 'g') {
-	  tmp[2][tmp_G].value = c;
-	  tmp[2][tmp_G].chrom = (unsigned char) i;
-	  tmp_G++;
-	} else if (nt == 'T' || nt == 't') {
-	  tmp[3][tmp_T].value = c;
-	  tmp[3][tmp_T].chrom = (unsigned char) i;
-	  tmp_T++;
-	}
-	c++;
-      }
+  }
+  fclose(f_tab);
+  
+  // write CHROM to file
+  sprintf(filename_tab, "%s/%s.CHROM", sa_index_dirname, prefix);
+  f_tab = fopen(filename_tab, "wb");
+  for (size_t i = 0; i < 4; i++) {
+    for (size_t j = 0; j < nts[i]; j++) {
+      fwrite(&(tmp[i][j].seq), sizeof(unsigned short int), 1, f_tab);
     }
-
-    assert(tmp_A == genome->num_A);
-    assert(tmp_C == genome->num_C);
-    assert(tmp_G == genome->num_G);
-    assert(tmp_T == genome->num_T);
-
-    for (size_t i = 0; i < genome->length; i++) {
-      if (genome->S[i] == 'N' || genome->S[i] == 'n') {
-	genome->S[i] = 'A';
-      }
-    }
-    global_S = genome->S;
-    /*
-      printf("before sorting...\n");
-      for (int i = 0; i < nts[0]; i++) {
-p      display_prefix(&genome->S[tmp[0][i].value], k_value);
-      printf("\ttmp[0][%i] = %u -> prefix.value = %lu\n", 
-      i, tmp[0][i].value, compute_prefix_value(&genome->S[tmp[0][i].value], k_value));
-      }
-    */
-    #pragma omp parallel for num_threads(4)
-    for (size_t i = 0; i < 4; i++) {
-      qsort(tmp[i], nts[i], sizeof(suffix_tmp_t), suffix_tmp_cmp3);
-    }
-    /*
-      printf("after sorting...\n");
-      for (int i = 0; i < nts[0]; i++) {
-      display_prefix(&genome->S[tmp[0][i].value], k_value);
-      printf("\ttmp[0][%i] = %u -> prefix.value = %lu\n", 
-      i, tmp[0][i].value, compute_prefix_value(&genome->S[tmp[0][i].value], k_value));
-      }
-    */
-    gettimeofday(&stop, NULL);
-    printf("end of computing SA and CHROM table in %0.2f s\n", 
-	   (stop.tv_sec - start.tv_sec) + (stop.tv_usec - start.tv_usec) / 1000000.0f);  
-    
-    // write SA to file
-    sprintf(filename_tab, "%s/%s.SA", sa_index_dirname, prefix);
-    f_tab = fopen(filename_tab, "wb");
-    for (size_t i = 0; i < 4; i++) {
-      for (size_t j = 0; j < nts[i]; j++) {
-	fwrite(&(tmp[i][j].value), sizeof(uint), 1, f_tab);
-      }
-    }
-    fclose(f_tab);
-    
-    // write CHROM to file
-    sprintf(filename_tab, "%s/%s.CHROM", sa_index_dirname, prefix);
-    f_tab = fopen(filename_tab, "wb");
-    for (size_t i = 0; i < 4; i++) {
-      for (size_t j = 0; j < nts[i]; j++) {
-	fwrite(&(tmp[i][j].chrom), sizeof(unsigned char), 1, f_tab);
-      }
-    }
-    fclose(f_tab);
-
-    // free memory
-    for (int i = 0; i < 4; i++) {
-      free(tmp[i]);
-    }
-  } else {
-    printf("updating S genome (N -> A)...\n");
-    for (size_t i = 0; i < genome->length; i++) {
-      if (genome->S[i] == 'N' || genome->S[i] == 'n') {
-	genome->S[i] = 'A';
-      }
-    }
-    printf("end of updating S genome. Done!\n");
+  }
+  fclose(f_tab);
+  
+  // free memory
+  for (int i = 0; i < 4; i++) {
+    free(tmp[i]);
   }
 
   sprintf(filename_tab, "%s/%s.SA", sa_index_dirname, prefix);
@@ -595,31 +848,6 @@ p      display_prefix(&genome->S[tmp[0][i].value], k_value);
 	 (stop.tv_sec - start.tv_sec) + (stop.tv_usec - start.tv_usec) / 1000000.0f);      
   fclose(f_tab);
 
-
-  /*
-  {
-    char *seq;
-    size_t num_prefixes, prev_value, value, pos;
-    for (size_t k = 23; k <= 26; k++) {
-      prev_value = 999999;
-      num_prefixes = 0;
-      for (size_t i = 0; i < num_suffixes; i++) {
-	pos = SA[i];
-	if (pos + k < genome->length) {
-	  seq = &genome->S[pos];
-	  value = compute_prefix_value(seq, k);
-	  if (value != prev_value) {
-	    prev_value = value;
-	    num_prefixes++;
-	  }
-	}
-      }
-      printf("k = %lu -> num. prefixes = %lu\n", k, num_prefixes);
-    }
-    exit(-1);
-  }
-  */
-
   //-----------------------------------------
   // compute Compressed Row Storage tables
   //-----------------------------------------
@@ -631,12 +859,11 @@ p      display_prefix(&genome->S[tmp[0][i].value], k_value);
   // A vector
   sprintf(filename_tab, "%s/%s.A", sa_index_dirname, prefix);
   FILE *f_A = fopen(filename_tab, "wb");
-  uint A_counter = 0;
 
   // IA vector
   sprintf(filename_tab, "%s/%s.IA", sa_index_dirname, prefix);
   FILE *f_IA = fopen(filename_tab, "wb");
-  uint IA_counter = 0, first_in_row;
+  uint first_in_row;
 
   // JA vectors, they'll be merged into a single JA vector
   sprintf(filename_tab, "%s/%s.JA", sa_index_dirname, prefix);
@@ -768,24 +995,6 @@ p      display_prefix(&genome->S[tmp[0][i].value], k_value);
   fclose(f_IA);
   fclose(f_JA);
 
-  uint pre_length;// = 1LLU << (2 * k_value);
-  uint *PRE;// = (uint *) calloc(pre_length, sizeof(uint));
-/*
-
-  gettimeofday(&stop, NULL);
-  printf("end of computing PRE table in %0.2f s\n", 
-	 (stop.tv_sec - start.tv_sec) + (stop.tv_usec - start.tv_usec) / 1000000.0f);  
-
-  // write PRE to file for the next time
-  sprintf(filename_tab, "%s/%s.PRE", sa_index_dirname, prefix);
-  f_tab = fopen(filename_tab, "wb");
-  if (f_tab == NULL) {
-    printf("Error: could not open %s to write\n", filename_tab);
-    exit(-1);
-  } 
-  fwrite(PRE, sizeof(uint), pre_length, f_tab);
-  fclose(f_tab);
-*/  
   //-----------------------------------------
   // save parameters
   //-----------------------------------------
@@ -793,16 +1002,22 @@ p      display_prefix(&genome->S[tmp[0][i].value], k_value);
   f_tab = fopen(filename_tab, "w");
   fprintf(f_tab, "%s\n", prefix);
   fprintf(f_tab, "%i\n", k_value);
-  fprintf(f_tab, "%i\n", pre_length);
+  fprintf(f_tab, "0\n");
   fprintf(f_tab, "%i\n", A_counter);
   fprintf(f_tab, "%i\n", IA_counter);
   fprintf(f_tab, "%lu\n", num_suffixes);
   fprintf(f_tab, "%lu\n", genome->length);
-  fprintf(f_tab, "%lu\n", genome->num_chroms);
-  for (size_t i = 0; i < genome->num_chroms; i++) {
-    fprintf(f_tab, "%s\t%lu\n", 
-	   (genome->chrom_names ? genome->chrom_names[i] : "no-name"), 
-	    genome->chrom_lengths[i]);
+  fprintf(f_tab, "%lu\n", genome->num_seqs);
+  for (size_t i = 0; i < genome->num_seqs; i++) {
+    fprintf(f_tab, "%s\t%lu\t%i\t%lu\t%lu\t%lu\n", 
+	    (genome->seq_names ? genome->seq_names[i] : "no-name"), 
+	    genome->seq_lengths[i],
+	    genome->seq_types[i],
+	    genome->seq_chroms[i],
+	    genome->seq_starts[i],
+	    genome->seq_ends[i],
+	    genome->left_flanks[i],
+	    genome->right_flanks[i]);
   }
   fclose(f_tab);
 
@@ -810,22 +1025,22 @@ p      display_prefix(&genome->S[tmp[0][i].value], k_value);
   f_tab = fopen(filename_tab, "w");
   fprintf(f_tab, "1. filename prefix\n");
   fprintf(f_tab, "2. k value\n");
-  fprintf(f_tab, "3. prefix table length: pow(2, k-value * 2)\n");
+  fprintf(f_tab, "3. skip\n");
   fprintf(f_tab, "4. A table length (= JA table length). Be carefull, A 32-bit items, for JA 8-bit items\n");
   fprintf(f_tab, "5. IA table length\n");
   fprintf(f_tab, "6. Number of suffixes\n");
   fprintf(f_tab, "7. Genome length\n");
-  fprintf(f_tab, "8. Number of chromosomes\n");
-  fprintf(f_tab, "9. One line per chromsomome: name and length\n");
+  fprintf(f_tab, "8. Number of sequencess\n");
+  fprintf(f_tab, "9. One line per sequence: name, length, type, chrom, start, end, left and right flanks (the last five fields for HAP sequences)\n");
   fclose(f_tab);
 
   sprintf(filename_tab, "%s/index", sa_index_dirname);
   f_tab = fopen(filename_tab, "w");
-  for (size_t i = 0; i < genome->num_chroms; i++) {
+  for (size_t i = 0; i < genome->num_seqs; i++) {
     fprintf(f_tab, ">%s %i %lu\n", 
-	   (genome->chrom_names ? genome->chrom_names[i] : "no-name"), 
+	   (genome->seq_names ? genome->seq_names[i] : "no-name"), 
 	    0,
-	    genome->chrom_lengths[i] - 1);
+	    genome->seq_lengths[i] - 1);
   }
   fclose(f_tab);
 
@@ -840,7 +1055,7 @@ sa_index3_t *sa_index3_new(char *sa_index_dirname) {
   FILE *f_tab;
   char line[1024], filename_tab[strlen(sa_index_dirname) + 1024];
   char *prefix;
-  uint k_value, pre_length, A_items, IA_items, num_suffixes, genome_len, num_chroms, num_items;
+  size_t k_value, A_items, IA_items, num_suffixes, genome_len, num_seqs, num_items;
 
   struct timeval stop, start;
 
@@ -864,44 +1079,67 @@ sa_index3_t *sa_index3_new(char *sa_index_dirname) {
   res = fgets(line, 1024, f_tab);
   line[strlen(line) - 1] = 0;
   prefix = strdup(line);
+
   // k_value
   res = fgets(line, 1024, f_tab);
-  k_value = atoi(line);
-  // pre_length
+  sscanf(line, "%lu\n", &k_value);
+
+  // skip
   res = fgets(line, 1024, f_tab);
-  pre_length = atoi(line);
+  sscanf(line, "%lu\n", &A_items);
+
   // A_items
   res = fgets(line, 1024, f_tab);
-  A_items = atoi(line);
+  sscanf(line, "%lu\n", &A_items);
+
   // IA_items
   res = fgets(line, 1024, f_tab);
-  IA_items = atol(line);
+  sscanf(line, "%lu\n", &IA_items);
+
   // num_suffixes
   res = fgets(line, 1024, f_tab);
-  num_suffixes = atoi(line);
+  sscanf(line, "%lu\n", &num_suffixes);
+
   // genome_length
   res = fgets(line, 1024, f_tab);
-  genome_len = atoi(line);
-  // num_chroms
-  res = fgets(line, 1024, f_tab);
-  num_chroms = atoi(line);
+  sscanf(line, "%lu\n", &genome_len);
 
-  size_t *chrom_lengths = (size_t *) malloc(num_chroms * sizeof(size_t));
-  char **chrom_names = (char **) malloc(num_chroms * sizeof(char *));
-  char chrom_name[1024];
-  size_t chrom_len;
+  // num_seqs
+  res = fgets(line, 1024, f_tab);
+  sscanf(line, "%lu\n", &num_seqs);
+
+  size_t *seq_lengths = (size_t *) malloc(num_seqs * sizeof(size_t));
+  int *seq_types = (int *) malloc(num_seqs * sizeof(int));
+  size_t *seq_chroms = (size_t *) malloc(num_seqs * sizeof(size_t));
+  size_t *seq_starts = (size_t *) malloc(num_seqs * sizeof(size_t));
+  size_t *seq_ends = (size_t *) malloc(num_seqs * sizeof(size_t));
+  size_t *left_flanks = (size_t *) calloc(num_seqs, sizeof(size_t));
+  size_t *right_flanks = (size_t *) calloc(num_seqs, sizeof(size_t));
+
+  char **seq_names = (char **) malloc(num_seqs * sizeof(char *));
+  char seq_name[1024];
+  int seq_type;
+  size_t seq_len, seq_chrom, seq_start, seq_end, left_flank, right_flank;
 		  
-  for (int i = 0; i < num_chroms; i++) {
+  for (size_t i = 0; i < num_seqs; i++) {
     res = fgets(line, 1024, f_tab);
-    sscanf(line, "%s %lu\n", chrom_name, &chrom_len);
+    sscanf(line, "%s\t%lu\t%i\t%lu\t%lu\t%lu\t%lu\t%lu\n", 
+	   seq_name, &seq_len, &seq_type, &seq_chrom, &seq_start, &seq_end, &left_flank, &right_flank);
     //printf("chrom_name: %s, chrom_len: %lu\n", chrom_name, chrom_len);
-    chrom_names[i] = strdup(chrom_name);
-    chrom_lengths[i] = chrom_len;
+    seq_names[i] = strdup(seq_name);
+    seq_lengths[i] = seq_len;
+    seq_types[i] = seq_type;
+    seq_chroms[i] = seq_chrom;
+    seq_starts[i] = seq_start;
+    seq_ends[i] = seq_end;
+    left_flanks[i] = left_flank;
+    right_flanks[i] = right_flank;
   }
 
   fclose(f_tab);
 
-  char *S, *CHROM;
+  char *S;
+  unsigned short int *CHROM;
   unsigned char *JA;
   sa_genome3_t *genome;
   uint *SA, *PRE, *A, *IA;
@@ -938,14 +1176,17 @@ sa_index3_t *sa_index3_new(char *sa_index_dirname) {
       //	     (stop.tv_sec - start.tv_sec) + (stop.tv_usec - start.tv_usec) / 1000000.0f);      
       fclose(f_tab);
       
-      genome = sa_genome3_new(genome_len, num_chroms, 
-			      chrom_lengths, chrom_names, S);
+      genome = sa_genome3_new(genome_len, num_seqs, seq_lengths, seq_types, seq_chroms, 
+			      seq_starts, seq_ends, seq_names, S);
       
       for (size_t i = 0; i < genome->length; i++) {
 	if (genome->S[i] == 'N' || genome->S[i] == 'n') {
 	  genome->S[i] = 'A';
 	}
       }
+
+      // display genome
+      //sa_genome3_display(genome);
 
       // Compressed Row Storage (A table)
       A = NULL;
@@ -1028,11 +1269,11 @@ sa_index3_t *sa_index3_new(char *sa_index_dirname) {
 	exit(-1);
       }
       //      printf("CHROM: filename %s, num_suffixes = %lu\n", filename_tab, num_suffixes);
-      CHROM = (char *) malloc(num_suffixes * sizeof(char));
+      CHROM = (unsigned short int *) malloc(num_suffixes * sizeof(unsigned short int));
       
       //      printf("\nreading CHROM table from file %s...\n", filename_tab);
       gettimeofday(&start, NULL);
-      num_items = fread(CHROM, sizeof(char), num_suffixes, f_tab);
+      num_items = fread(CHROM, sizeof(unsigned short int), num_suffixes, f_tab);
       if (num_items != num_suffixes) {
 	printf("Error: (%s) mismatch num_items = %i vs num_suffixes = %i\n", 
 	       filename_tab, num_items, num_suffixes);
@@ -1044,29 +1285,6 @@ sa_index3_t *sa_index3_new(char *sa_index_dirname) {
       //	     (stop.tv_sec - start.tv_sec) + (stop.tv_usec - start.tv_usec) / 1000000.0f);      
       fclose(f_tab);
 
-      // read PRE table from file
-      PRE = NULL;
-      sprintf(filename_tab, "%s/%s.PRE", sa_index_dirname, prefix);
-      f_tab = fopen(filename_tab, "rb");
-      if (f_tab) {
-	num_items = 1LLU << (2 * k_value);
-	assert(num_items == pre_length);
-	PRE = (uint *) malloc(num_items * sizeof(uint));
-	
-	//	printf("\nreading PRE table from file %s...\n", filename_tab);
-	gettimeofday(&start, NULL);
-	if (num_items != fread(PRE, sizeof(uint), num_items, f_tab)) {
-	  printf("Error: (%s) mismatch num_items = %i\n", 
-		 filename_tab, num_items);
-	  exit(-1);
-	}
-	gettimeofday(&stop, NULL);
-	//	printf("end of reading PRE table (%lu num_items) from file %s in %0.2f s\n", 
-	//	       num_items, filename_tab,
-	//	       (stop.tv_sec - start.tv_sec) + (stop.tv_usec - start.tv_usec) / 1000000.0f);  
-	fclose(f_tab);
-      }
-   
       // Compressed Row Storage (JA table)
       JA = NULL;
       sprintf(filename_tab, "%s/%s.JA", sa_index_dirname, prefix);
@@ -1095,7 +1313,6 @@ sa_index3_t *sa_index3_new(char *sa_index_dirname) {
   sa_index3_t *p = (sa_index3_t *) malloc(sizeof(sa_index3_t));
 
   p->num_suffixes = num_suffixes;
-  p->prefix_length = pre_length;
   p->A_items = A_items;
   p->IA_items = IA_items;
   p->k_value = k_value;

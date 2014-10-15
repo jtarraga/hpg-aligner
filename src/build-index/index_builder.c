@@ -13,6 +13,8 @@ index_options_t *index_options_new() {
   options->index_ratio = 0;
 
   options->ref_genome = NULL;
+  options->alt_filename = NULL;
+  options->scaffold_filename = NULL;
   options->index_filename = NULL;
 
   return options;
@@ -22,6 +24,8 @@ index_options_t *index_options_new() {
 void index_options_free(index_options_t *options) {
   if (options) {
     if (options->ref_genome) { free(options->ref_genome); }
+    if (options->alt_filename) { free(options->alt_filename); }
+    if (options->scaffold_filename) { free(options->scaffold_filename); }
     if (options->index_filename) { free(options->index_filename); }
     free(options);
   }
@@ -38,9 +42,11 @@ void** argtable_index_options_new(int mode) {
   void **argtable = (void**)malloc((num_options + 1) * sizeof(void*));	
 
   int count = 0;
-  argtable[count++] = arg_file0("i", "index", NULL, "Index directory name");
-  argtable[count++] = arg_file0("g", "ref-genome", NULL, "Reference genome");
   argtable[count++] = arg_lit0("h", "help", "Help option");
+  argtable[count++] = arg_file0("i", "index", NULL, "Index directory name");
+  argtable[count++] = arg_file0("g", "ref-genome", NULL, "Reference genome filename");
+  argtable[count++] = arg_file0("a", "alternative-map", NULL, "Alternative mapping filename. This two-columns file contains the alternative sequence names with their corresponding chromosome names (only for SA index)");
+  argtable[count++] = arg_file0("s", "scaffold-names", NULL, "Scaffold names filename. This one-column file contains the names of the scaffold sequences (only for SA index)");
   argtable[count++] = arg_lit0("v", "version", "Display HPG Aligner version");
 
   if (mode == BWT_INDEX) {
@@ -62,9 +68,11 @@ void argtable_index_options_free(void **argtable, int num_options) {
 index_options_t *read_CLI_index_options(void **argtable, index_options_t *options, int mode) {        
 
   int count = -1;
+  if (((struct arg_int*)argtable[++count])->count) { options->help = ((struct arg_int*)argtable[count])->count; }
   if (((struct arg_file*)argtable[++count])->count) { options->index_filename = strdup(*(((struct arg_file*)argtable[count])->filename)); }
   if (((struct arg_file*)argtable[++count])->count) { options->ref_genome = strdup(*(((struct arg_file*)argtable[count])->filename)); }
-  if (((struct arg_int*)argtable[++count])->count) { options->help = ((struct arg_int*)argtable[count])->count; }
+  if (((struct arg_file*)argtable[++count])->count) { options->alt_filename = strdup(*(((struct arg_file*)argtable[count])->filename)); }
+  if (((struct arg_file*)argtable[++count])->count) { options->scaffold_filename = strdup(*(((struct arg_file*)argtable[count])->filename)); }
   if (((struct arg_int*)argtable[++count])->count) { options->version = ((struct arg_int*)argtable[count])->count; }
   if (mode == BWT_INDEX) {
     if (((struct arg_int*)argtable[++count])->count) { options->index_ratio = *(((struct arg_int*)argtable[count])->ival); }
@@ -101,14 +109,7 @@ index_options_t *parse_index_options(int argc, char **argv) {
     exit(-1);
   } else {
     int num_errors = arg_parse(argc, argv, argtable);
-    /*
-    if (((struct arg_int*)argtable[2])->count) {
-      usage_index(argtable, mode);
-      argtable_index_options_free(argtable, num_options);
-      index_options_free(options);
-      exit(0);
-    }
-    */
+
     if (num_errors > 0) {
       fprintf(stdout, "Errors:\n");
       // struct end is always allocated in the last position               
@@ -145,11 +146,26 @@ void validate_index_options(index_options_t *options, int mode) {
   if (!exists(options->index_filename)) {
     LOG_FATAL("Index directory does not exist.\n");
   }
+
+  if (options->alt_filename && !exists(options->alt_filename)) {
+    LOG_FATAL("Alternative mapping file does not exist.\n");
+  }
+
+  if (options->scaffold_filename && !exists(options->scaffold_filename)) {
+    LOG_FATAL("Scaffold names file does not exist.\n");
+  }
   
   if (mode == BWT_INDEX && options->index_ratio <= 0) {
     LOG_FATAL("Invalid BWT index ratio. It must be greater than 0.\n");
   }
 
+  if (mode == BWT_INDEX && options->alt_filename) {
+    LOG_FATAL("BWT index does not support alternative mapping.\n");
+  }
+
+  if (mode == BWT_INDEX && options->scaffold_filename) {
+    LOG_FATAL("BWT index does not support scaffolds.\n");
+  }
 }
 
 
@@ -173,7 +189,9 @@ void run_index_builder(int argc, char **argv, char *mode_str) {
     char binary_filename[strlen(options->index_filename) + 128];
     sprintf(binary_filename, "%s/dna_compression.bin", options->index_filename);
     printf("Generating SA Index...\n");
-    sa_index3_build_k18(options->ref_genome, prefix_value, options->index_filename);
+    sa_index3_build_k18_ex(options->ref_genome, options->alt_filename, 
+			   options->scaffold_filename, prefix_value, 
+			   options->index_filename);
     generate_codes(binary_filename, options->ref_genome);
     printf("SA Index generated!\n");
 

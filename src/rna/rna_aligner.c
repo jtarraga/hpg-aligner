@@ -302,7 +302,7 @@ void sa_index3_parallel_genome_new(char *sa_index_dirname, int num_threads,
   FILE *f_tab;
   char line[1024], filename_tab[strlen(sa_index_dirname) + 1024];
   char *prefix;
-  uint k_value, pre_length, A_items, IA_items, num_suffixes, genome_len, num_chroms, num_items;
+  uint k_value, pre_length, A_items, IA_items, num_suffixes, genome_len, num_seqs, num_items;
 
   struct timeval stop, start, end;
 
@@ -321,43 +321,61 @@ void sa_index3_parallel_genome_new(char *sa_index_dirname, int num_threads,
     exit(-1);
   }
 
+  char *res;
   // prefix
-  char *res = fgets(line, 1024, f_tab);
+  res = fgets(line, 1024, f_tab);
   line[strlen(line) - 1] = 0;
   prefix = strdup(line);
+
   // k_value
   res = fgets(line, 1024, f_tab);
-  k_value = atoi(line);
+  sscanf(line, "%lu\n", &k_value);
+
   // pre_length
   res = fgets(line, 1024, f_tab);
-  pre_length = atoi(line);
+  sscanf(line, "%lu\n", &pre_length);
+
   // A_items
   res = fgets(line, 1024, f_tab);
-  A_items = atoi(line);
+  sscanf(line, "%lu\n", &A_items);
+
   // IA_items
   res = fgets(line, 1024, f_tab);
-  IA_items = atol(line);
+  sscanf(line, "%lu\n", &IA_items);
+
   // num_suffixes
   res = fgets(line, 1024, f_tab);
-  num_suffixes = atoi(line);
+  sscanf(line, "%lu\n", &num_suffixes);
+
   // genome_length
   res = fgets(line, 1024, f_tab);
-  genome_len = atoi(line);
-  // num_chroms
-  res = fgets(line, 1024, f_tab);
-  num_chroms = atoi(line);
+  sscanf(line, "%lu\n", &genome_len);
 
-  size_t *chrom_lengths = (size_t *) malloc(num_chroms * sizeof(size_t));
-  char **chrom_names = (char **) malloc(num_chroms * sizeof(char *));
-  char chrom_name[1024];
-  size_t chrom_len;
+  // num_seqs
+  res = fgets(line, 1024, f_tab);
+  sscanf(line, "%lu\n", &num_seqs);
+
+  size_t *seq_lengths = (size_t *) malloc(num_seqs * sizeof(size_t));
+  int *seq_types = (int *) malloc(num_seqs * sizeof(int));
+  size_t *seq_chroms = (size_t *) malloc(num_seqs * sizeof(size_t));
+  size_t *seq_starts = (size_t *) malloc(num_seqs * sizeof(size_t));
+  size_t *seq_ends = (size_t *) malloc(num_seqs * sizeof(size_t));
+
+  char **seq_names = (char **) malloc(num_seqs * sizeof(char *));
+  char seq_name[1024];
+  int seq_type;
+  size_t seq_len, seq_chrom, seq_start, seq_end;
 		  
-  for (int i = 0; i < num_chroms; i++) {
+  for (size_t i = 0; i < num_seqs; i++) {
     res = fgets(line, 1024, f_tab);
-    sscanf(line, "%s %lu\n", chrom_name, &chrom_len);
+    sscanf(line, "%s %lu %i %lu %lu %lu\n", seq_name, &seq_len, &seq_type, &seq_chrom, &seq_start, &seq_end);
     //printf("chrom_name: %s, chrom_len: %lu\n", chrom_name, chrom_len);
-    chrom_names[i] = strdup(chrom_name);
-    chrom_lengths[i] = chrom_len;
+    seq_names[i] = strdup(seq_name);
+    seq_lengths[i] = seq_len;
+    seq_types[i] = seq_type;
+    seq_chroms[i] = seq_chrom;
+    seq_starts[i] = seq_start;
+    seq_ends[i] = seq_end;
   }
 
   fclose(f_tab);
@@ -409,8 +427,8 @@ void sa_index3_parallel_genome_new(char *sa_index_dirname, int num_threads,
 	//	     (stop.tv_sec - start.tv_sec) + (stop.tv_usec - start.tv_usec) / 1000000.0f);      
 	fclose(f_tab);
       
-	genome = sa_genome3_new(genome_len, num_chroms, 
-				chrom_lengths, chrom_names, S);
+	genome = sa_genome3_new(genome_len, num_seqs, seq_lengths, seq_types, seq_chroms, 
+				seq_starts, seq_ends, seq_names, S);
       
 	for (size_t i = 0; i < genome->length; i++) {
 	  if (genome->S[i] == 'N' || genome->S[i] == 'n') {
@@ -594,15 +612,15 @@ void sa_index3_parallel_genome_new(char *sa_index_dirname, int num_threads,
 
 	genome_ = genome_new("dna_compression.bin", sa_index_dirname, SA_MODE);	
 
-	genome_->num_chromosomes = num_chroms;
+	genome_->num_chromosomes = num_seqs;
 	genome_->chr_name = (char **) calloc(genome_->num_chromosomes, sizeof(char *));
 	genome_->chr_size = (size_t *) calloc(genome_->num_chromosomes, sizeof(size_t));
 	genome_->chr_offset = (size_t *) calloc(genome_->num_chromosomes, sizeof(size_t));
 	size_t offset = 0;
 	
-	for (int c = 0; c < num_chroms; c++) {
-	  genome_->chr_size[c] = chrom_lengths[c];
-	  genome_->chr_name[c] = strdup(chrom_names[c]);
+	for (int c = 0; c < num_seqs; c++) {
+	  genome_->chr_size[c] = seq_lengths[c];
+	  genome_->chr_name[c] = strdup(seq_names[c]);
 	  genome_->chr_offset[c] = offset;
 	  offset += genome_->chr_size[c];
 	}

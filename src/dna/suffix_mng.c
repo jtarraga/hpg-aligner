@@ -7,14 +7,14 @@
 suffix_mng_t *suffix_mng_new(sa_genome3_t *genome) {
   suffix_mng_t *p = (suffix_mng_t *) calloc(1, sizeof(suffix_mng_t));
 
-  int num_chroms = genome->num_chroms;
+  int num_seqs = genome->num_seqs;
 
   char *name;
   Container *subject = (Container *) malloc(sizeof(Container));
-  bl_containerInit(subject, num_chroms, sizeof(char *));
+  bl_containerInit(subject, num_seqs, sizeof(char *));
 
-  linked_list_t **suffix_lists = (linked_list_t **) malloc (sizeof(linked_list_t *) * num_chroms);
-  for (int i = 0; i < num_chroms; i++) {
+  linked_list_t **suffix_lists = (linked_list_t **) malloc (sizeof(linked_list_t *) * num_seqs);
+  for (unsigned short int i = 0; i < num_seqs; i++) {
     suffix_lists[i] = linked_list_new(COLLECTION_MODE_ASYNCHRONIZED);
 
     name = calloc(64, sizeof(char));
@@ -23,7 +23,7 @@ suffix_mng_t *suffix_mng_new(sa_genome3_t *genome) {
   }
 
   p->num_seeds = 0;
-  p->num_chroms = num_chroms;
+  p->num_seqs = num_seqs;
   p->subject = subject;
   p->suffix_lists = suffix_lists;
 
@@ -35,7 +35,7 @@ suffix_mng_t *suffix_mng_new(sa_genome3_t *genome) {
 void suffix_mng_free(suffix_mng_t *p) {
   if (p) {
     if (p->suffix_lists) {
-      for (int i = 0; i < p->num_chroms; i++) {
+      for (unsigned short int i = 0; i < p->num_seqs; i++) {
 	if (p->suffix_lists[i]) {
 	  linked_list_free(p->suffix_lists[i], (void *)seed_free);
 	}
@@ -59,7 +59,7 @@ void suffix_mng_clear(suffix_mng_t *p) {
   if (p) {
     p->num_seeds = 0;
     if (p->suffix_lists) {
-      for (unsigned int i = 0; i < p->num_chroms; i++) {
+      for (unsigned short int i = 0; i < p->num_seqs; i++) {
 	if (p->suffix_lists[i]) {
 	  linked_list_clear(p->suffix_lists[i], (void *)seed_free);
 	}
@@ -70,7 +70,7 @@ void suffix_mng_clear(suffix_mng_t *p) {
 
 //--------------------------------------------------------------------
 
-void suffix_mng_update(int chrom, size_t read_start, size_t read_end, 
+void suffix_mng_update(unsigned short int chrom, size_t read_start, size_t read_end, 
 		       size_t genome_start, size_t genome_end, 
 		       suffix_mng_t *p) {
 
@@ -139,7 +139,7 @@ void extend_to_left(seed_t *seed, int max_length,
 		    alig_out_t *alig_out) {
   cigar_init(&alig_out->cigar);
 
-  int chrom = cal->chromosome_id;
+  unsigned short int chrom = cal->chromosome_id;
 
   size_t r_end = seed->read_start - 1;
   size_t r_start = r_end - max_length;
@@ -149,7 +149,7 @@ void extend_to_left(seed_t *seed, int max_length,
   size_t g_len = r_len + 10;
   size_t g_end = seed->genome_start - 1;
   size_t g_start = g_end - g_len;
-  char *g_seq = &sa_index->genome->S[g_start + sa_index->genome->chrom_offsets[chrom] + 1];
+  char *g_seq = &sa_index->genome->S[g_start + sa_index->genome->seq_offsets[chrom] + 1];
   
   float score = doscadfun_inv(r_seq, r_len, g_seq, g_len, MISMATCH_PERC,
 			      alig_out);
@@ -161,7 +161,7 @@ void extend_to_right(seed_t *seed, int max_length,
   
   cigar_init(&alig_out->cigar);
 
-  int chrom = cal->chromosome_id;
+  unsigned short int chrom = cal->chromosome_id;
 
   size_t r_start = seed->read_end + 1;
   size_t r_end = seed->read_end + max_length;
@@ -172,7 +172,7 @@ void extend_to_right(seed_t *seed, int max_length,
   size_t g_start = seed->genome_end + 1;
   size_t g_end = g_start + g_len;
 
-  char *g_seq = &sa_index->genome->S[g_start + sa_index->genome->chrom_offsets[chrom]];
+  char *g_seq = &sa_index->genome->S[g_start + sa_index->genome->seq_offsets[chrom]];
   
   float score = doscadfun(&r_seq[r_start], r_len, g_seq, g_len, MISMATCH_PERC,
 			  alig_out);
@@ -225,7 +225,8 @@ void update_seed_right(alig_out_t *alig_out, seed_t *seed, seed_cal_t *cal) {
 void extend_seeds(seed_cal_t *cal, sa_index3_t *sa_index) {
   size_t gap_read_start, gap_read_end;
   size_t genome_pos, gap_genome_start, gap_genome_end;
-  int chrom, gap_read_len, gap_genome_len;
+  unsigned short int chrom;
+  int gap_read_len, gap_genome_len;
 
   linked_list_item_t *item;
   seed_t *prev_seed, *seed;
@@ -326,7 +327,8 @@ void suffix_mng_create_cals(fastq_read_t *read, int min_area, int strand,
 
   if (p->num_seeds <= 0) return;
 
-  int read_area, chrom;
+  unsigned short int chrom;
+  int read_area;
   seed_t *seed;
   seed_cal_t *cal;
   linked_list_t *seed_list;
@@ -341,7 +343,7 @@ void suffix_mng_create_cals(fastq_read_t *read, int min_area, int strand,
 
   slmatch_t frag;
   linked_list_t *suffix_list;
-  for (unsigned int i = 0; i < p->num_chroms; i++) {
+  for (unsigned short int i = 0; i < p->num_seqs; i++) {
     suffix_list = p->suffix_lists[i];
     if (suffix_list) {
       for (linked_list_item_t *item = suffix_list->first; 
@@ -394,8 +396,9 @@ void suffix_mng_create_cals(fastq_read_t *read, int min_area, int strand,
 	  if (chain->scr >= info.minscore &&
 	      bl_containerSize(chain->matches) >= info.minfrag) {
 
-	    chrom = atoi(*(char **) bl_containerGet(info.subject, chain->subject));
-	    
+	    //	    chrom = atoi(*(char **) bl_containerGet(info.subject, chain->subject));
+	    sscanf((*(char **) bl_containerGet(info.subject, chain->subject)), "%u", &chrom);
+
 	    read_area = 0;
 	    seed_list = linked_list_new(COLLECTION_MODE_ASYNCHRONIZED);
 	    
@@ -446,8 +449,8 @@ void suffix_mng_create_cals(fastq_read_t *read, int min_area, int strand,
 void suffix_mng_search_read_cals(fastq_read_t *read, int num_seeds, 
 				 sa_index3_t *sa_index, array_list_t *cal_list, 
 				 suffix_mng_t *suffix_mng) {
-  int max_suffixes = MAX_NUM_SUFFIXES;
-  int chrom, num_suffixes;
+  int num_suffixes, max_suffixes = MAX_NUM_SUFFIXES;
+  unsigned short int chrom;
   size_t suffix_len;
   size_t low, high, r_start_suf, r_end_suf, g_start_suf, g_end_suf;
 
@@ -479,7 +482,7 @@ void suffix_mng_search_read_cals(fastq_read_t *read, int num_seeds,
 	  r_start_suf = read_pos;
 	  r_end_suf = r_start_suf + suffix_len - 1;
 	  
-	  g_start_suf = sa_index->SA[suff] - sa_index->genome->chrom_offsets[chrom];
+	  g_start_suf = sa_index->SA[suff] - sa_index->genome->seq_offsets[chrom];
 	  g_end_suf = g_start_suf + suffix_len - 1;
 	  
 	  suffix_mng_update(chrom, r_start_suf, r_end_suf, g_start_suf, g_end_suf, suffix_mng);
@@ -503,7 +506,7 @@ void suffix_mng_search_read_cals(fastq_read_t *read, int num_seeds,
 	  r_start_suf = read_pos;
 	  r_end_suf = r_start_suf + suffix_len - 1;
 	  
-	  g_start_suf = sa_index->SA[suff] - sa_index->genome->chrom_offsets[chrom];
+	  g_start_suf = sa_index->SA[suff] - sa_index->genome->seq_offsets[chrom];
 	  g_end_suf = g_start_suf + suffix_len - 1;
 	  
 	  suffix_mng_update(chrom, r_start_suf, r_end_suf, g_start_suf, g_end_suf, suffix_mng);
@@ -524,12 +527,13 @@ void suffix_mng_search_read_cals(fastq_read_t *read, int num_seeds,
 
 void suffix_mng_search_read_cals_by_region(fastq_read_t *read, int num_seeds, 
 					   sa_index3_t *sa_index, 
-					   int strand, int chromosome, 
+					   int strand, unsigned short int chromosome, 
 					   size_t start, size_t end, 
 					   array_list_t *cal_list, 
 					   suffix_mng_t *suffix_mng) {
   int max_suffixes = MAX_NUM_SUFFIXES;
-  int chrom, num_prefixes, num_suffixes, suffix_len;
+  unsigned short int chrom;
+  int num_prefixes, num_suffixes, suffix_len;
   size_t low, high, r_start_suf, r_end_suf, g_start_suf, g_end_suf;
 
   int read_pos, read_inc = read->length / num_seeds;
@@ -556,7 +560,7 @@ void suffix_mng_search_read_cals_by_region(fastq_read_t *read, int num_seeds,
 	  r_start_suf = read_pos;
 	  r_end_suf = r_start_suf + suffix_len - 1;
 	  
-	  g_start_suf = sa_index->SA[suff] - sa_index->genome->chrom_offsets[chrom];
+	  g_start_suf = sa_index->SA[suff] - sa_index->genome->seq_offsets[chrom];
 	  g_end_suf = g_start_suf + suffix_len - 1;
 	  
 	  if (start <= g_start_suf && end >= g_end_suf) {
@@ -581,7 +585,7 @@ void suffix_mng_search_read_cals_by_region(fastq_read_t *read, int num_seeds,
 	  r_start_suf = read_pos;
 	  r_end_suf = r_start_suf + suffix_len - 1;
 	  
-	  g_start_suf = sa_index->SA[suff] - sa_index->genome->chrom_offsets[chrom];
+	  g_start_suf = sa_index->SA[suff] - sa_index->genome->seq_offsets[chrom];
 	  g_end_suf = g_start_suf + suffix_len - 1;
 	  
 	  if (start <= g_start_suf && end >= g_end_suf) {
@@ -604,7 +608,7 @@ void suffix_mng_display(suffix_mng_t *p) {
     if (p->suffix_lists) {
       seed_t *seed;
       linked_list_t *suffix_list;
-      for (unsigned int i = 0; i < p->num_chroms; i++) {
+      for (unsigned short int i = 0; i < p->num_seqs; i++) {
 	suffix_list = p->suffix_lists[i];
 	if (suffix_list) {
 	  for (linked_list_item_t *item = suffix_list->first; 

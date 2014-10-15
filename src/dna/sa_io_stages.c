@@ -75,8 +75,8 @@ size_t num_unmapped_reads_by_cigar_length = 0;
 
 void *write_sam_header(sa_genome3_t *genome, FILE *f) {
   fprintf(f, "@PG\tID:HPG-Aligner\tVN:%s\n", HPG_ALIGNER_VERSION);
-  for (int i = 0; i < genome->num_chroms; i++) {
-    fprintf(f, "@SQ\tSN:%s\tLN:%lu\n", genome->chrom_names[i], genome->chrom_lengths[i]);
+  for (int i = 0; i < genome->num_seqs; i++) {
+    fprintf(f, "@SQ\tSN:%s\tLN:%lu\n", genome->seq_names[i], genome->seq_lengths[i]);
   }
 }
 
@@ -165,11 +165,11 @@ int sa_sam_writer(void *data) {
 	  fprintf(out_file, "%s\t%lu\t%s\t%i\t%i\t%s\t%s\t%i\t%i\t%s\t%s\t%s\n", 
 		  read->id,
 		  flag,
-		  genome->chrom_names[alig->chromosome],
+		  genome->seq_names[alig->chromosome],
 		  alig->position + 1,
 		  (num_mappings > 1 ? 0 : alig->mapq),
 		  alig->cigar,
-		  (alig->chromosome == alig->mate_chromosome ? "=" : genome->chrom_names[alig->mate_chromosome]),
+		  (alig->chromosome == alig->mate_chromosome ? "=" : genome->seq_names[alig->mate_chromosome]),
 		  alig->mate_position + 1,
 		  alig->template_length,
 		  alig->sequence,
@@ -322,7 +322,7 @@ int sa_sam_writer(void *data) {
 	  fprintf(out_file, "%s\t%lu\t%s\t%lu\t%i\t%s\t%s\t%lu\t%lu\t%s\t%s\tAS:i:%i\tNM:i:%i\n", 
 		  read->id,
 		  flag,
-		  genome->chrom_names[cal->chromosome_id],
+		  genome->seq_names[cal->chromosome_id],
 		  cal->start + 1,
 		  (num_mappings == 1 ? cal->mapq : 0),
 		  cigar_M_string,
@@ -413,14 +413,19 @@ bam_header_t *create_bam_header(sa_genome3_t *genome) {
 
   bam_header_t *bam_header = (bam_header_t *) calloc(1, sizeof(bam_header_t));
 
-  int num_targets = genome->num_chroms;
+  int num_seqs = genome->num_seqs;
+  int target, num_targets = genome->num_refs;
 
   bam_header->n_targets = num_targets;
   bam_header->target_name = (char **) calloc(num_targets, sizeof(char *));
   bam_header->target_len = (uint32_t*) calloc(num_targets, sizeof(uint32_t));
-  for (int i = 0; i < num_targets; i++) {
-    bam_header->target_name[i] = strdup(genome->chrom_names[i]);
-    bam_header->target_len[i] = genome->chrom_lengths[i];
+  target = 0;
+  for (int i = 0; i < num_seqs; i++) {
+    if (IS_REF_SEQ(genome->seq_types, i)) {
+      bam_header->target_name[target] = strdup(genome->seq_names[i]);
+      bam_header->target_len[target] = genome->seq_lengths[i];
+      target++;
+    }
   }
 
   char pg[1024];
