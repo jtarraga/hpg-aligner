@@ -1346,111 +1346,31 @@ void sa_index3_free(sa_index3_t *p) {
 }
 
 //--------------------------------------------------------------------------------------
-//--------------------------------------------------------------------------------------
 
-
-
-
-  /*
-  //////////////////////////////////////////////////////////////////////////////
-  //////////////////////////////////////////////////////////////////////////////
-  {
-    // start filling matrix
-    size_t value, val;
-    size_t num_rows = 16 * 1024 * 1024; // 16 M
-    size_t num_cols = 256;
-
-    size_t M_items = num_rows * num_cols;
-    size_t M_bytes = M_items * sizeof(uint);
-    printf("allocating matrix M (%lu bytes)\n", M_bytes);
-    uint *M = (uint *) malloc(M_bytes);
-    if (M == NULL) {
-      printf("Error allocating memory for M matrix\n");
-      exit(-1);
-    }
-    printf("end of allocating matrix M\n");
-    
-    const uint max_uint = 4294967295;
-    memset(M, 0, M_bytes);
-
-    size_t matrix_id = 0, num_prefixes = 0;
-    size_t offset = matrix_id * M_items;
-    printf("num. suffixes = %lu\n", num_suffixes);
-    printf("processing sub-matrix %lu (offset %lu)\n", matrix_id, offset);
-    for (uint i = 0; i < num_suffixes; i++) {
-      value = compute_prefix_value(&genome->S[SA[i]], k_value);
-      if (value / M_items == matrix_id) {
-	if (M[value % M_items] == 0) { //max_uint) {
-	  M[value % M_items] = 1;
-	  num_prefixes++;
-	  //	  printf("\t");
-	  //	  display_prefix(&genome->S[SA[i]], k_value);
-	  //	  printf("\tprefix: (num, value, val) = (%lu, %lu, %lu)\n", num_prefixes, value, val);
-	}
-      } else {
-	printf("\tend of processing sub-matrix %lu: num. prefixes = %lu\n", matrix_id, num_prefixes);
-	memset(M, 0, M_bytes);
-	matrix_id = value / M_items;
-	M[value % M_items] = 1;
-	num_prefixes++;
-	//	printf("\t");
-	//	display_prefix(&genome->S[SA[i]], k_value);
-	//	printf("\tprefix: (num, value, val) = (%lu, %lu, %lu)\n", num_prefixes, value, val);
-	printf("processing sub-matrix %lu \n", matrix_id);
+void save_genome_haps_no_n(sa_genome3_t *genome) {
+  int count;
+  char *p;
+  FILE *f_tmp = fopen("/tmp/Homo_sapiens.GRCh38.77.dna.toplevel.fa.hap.clean.n.2", "w");
+  for (size_t i = 0; i < genome->num_seqs; i++) {
+    printf(">%s\n", genome->seq_names[i]);
+    fprintf(f_tmp, ">%s\n", genome->seq_names[i]);
+    p = &genome->S[genome->seq_offsets[i]];
+    count = 0;
+    for (size_t j = 0; j < genome->seq_lengths[i]; j++) {
+      count++;
+      fprintf(f_tmp, "%c", *p);
+      p++;
+      if (count == 60) {
+	count = 0;
+	fprintf(f_tmp, "\n");
       }
     }
-    printf("\tend of processing sub-matrix %lu: num. prefixes = %lu\n", matrix_id, num_prefixes);
-    printf("---> num. prefixes = %lu\n", num_prefixes);
-    exit(-1);
-  }
-  //////////////////////////////////////////////////////////////////////////////
-  //////////////////////////////////////////////////////////////////////////////
-*/
-
-  /*  
-  // read LCP table from file
-  sprintf(filename_tab, "%s/%s.LCP", sa_index_dirname, prefix);
-  f_tab = fopen(filename_tab, "rb");
-  if (f_tab == NULL) {
-    printf("Error: could not open %s to write\n", filename_tab);
-    exit(-1);
-  }
-  uint *LCP = (uint *) malloc(num_suffixes * sizeof(uint));
-
-  //  printf("\nreading LCP table from file %s...\n", filename_tab);
-  gettimeofday(&start, NULL);
-  num_items = fread(LCP, sizeof(uint), num_suffixes, f_tab);
-  if (num_items != num_suffixes) {
-    printf("Error: (%s) mismatch num_items = %lu vs num_suffixes = %lu\n", 
-	   filename_tab, num_items, num_suffixes);
-    exit(-1);
-  }
-  gettimeofday(&stop, NULL);
-  //  printf("end of reading LCP table (%lu num_suffixes) from file %s in %0.2f s\n", 
-  //	 num_suffixes, filename_tab,
-  //	 (stop.tv_sec - start.tv_sec) + (stop.tv_usec - start.tv_usec) / 1000000.0f);  
-  fclose(f_tab);
-  */
-
-
-  // change N to A
-  //  for (uint i = 0; i < len; i++) {
-  //    if (S[i] == 'N') S[i] = 'A';
-  //  }
-  
-  //    size_t prev_value, curr_value, index = 0;
-  //    curr_value = compute_prefix_value(&s[sa[1]], seed_size);
-  //    prefetch_table[index] = curr_value;
-  //    prev_value = curr_value;
-  /*
-  for (size_t i = 0; i < num_items; i++) {
-    printf("i = %i\tPRE[i] = %lu\tSA[PRE[i]] = %lu\t", i, PRE[i], SA[PRE[i]]);
-    char *p = &S[SA[PRE[i]]];
-    for (size_t j = 0; j < PREFIX_TABLE_K_VALUE; j++) {
-      printf("%c", p[j]);
+    if (count) {
+      fprintf(f_tmp, "\n");
     }
-    printf("\n");
-    if (i > 20) break;
   }
-  */
-  //	exit(-1);
+  fclose(f_tmp);
+}
+
+//--------------------------------------------------------------------------------------
+//--------------------------------------------------------------------------------------
